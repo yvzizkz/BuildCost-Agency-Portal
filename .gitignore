@@ -1,5 +1,6 @@
 # secrets — never commit
 .env
+.env*.local
 *.sa.json
 portal-bridge-sa.json
 serviceAccount*.json
@@ -8,6 +9,10 @@ serviceAccount*.json
 node_modules/
 .next/
 dist/
+
+# next.js / typescript build artifacts
+next-env.d.ts
+*.tsbuildinfo
 
 # local scratch
 *.log
