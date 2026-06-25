@@ -31,6 +31,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import admin from "firebase-admin";
+import { buildDispatch } from "./dispatch.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "tenants.json"), "utf8"));
@@ -71,6 +72,14 @@ function runIntake(tenant, submissionPath, imagesDir, defaultCity) {
   ];
   return new Promise((resolve) => {
     execFile("python3", argv, { cwd: tenant.repoRoot, timeout: EXEC_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout, stderr) => resolve({ code: err?.code ?? 0, killed: err?.killed ?? false, stdout, stderr }));
+  });
+}
+
+/** Run an engine invocation built by dispatch.mjs (argv array, no shell). */
+function runExec(exec) {
+  return new Promise((resolve) => {
+    execFile(exec.file, exec.argv, { cwd: exec.cwd, timeout: EXEC_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => resolve({ code: err?.code ?? 0, killed: err?.killed ?? false, stdout, stderr }));
   });
 }
@@ -164,6 +173,42 @@ async function processSubmission(ref, data) {
 }
 
 /**
+ * Process one owner command (approve / reject / requestGeneration). The dispatch
+ * decision (allow-list, validation, sanitization, argv template, spend-path
+ * exclusion) lives in dispatch.mjs; this only resolves the tenant, runs the argv,
+ * and records the outcome. The owner client NEVER writes queueItems/drafts — the
+ * engine CLIs do, under their own file locks; results mirror back via Loop 1.
+ */
+async function processCommand(ref, data) {
+  const { agencyId, brandId } = data;
+  const tenant = resolveTenant(agencyId, brandId);
+  if (!tenant) {
+    await ref.update({ status: "error", error: `unknown tenant ${agencyId}/${brandId}` });
+    return;
+  }
+  const built = buildDispatch(tenant, data.type, data.payload || data);
+  if (!built.ok) {
+    await ref.update({ status: "error", error: built.error });
+    console.warn(`[cmd] ${tenant.slug}/${ref.id} rejected: ${built.error}`);
+    return;
+  }
+  const r = await runExec(built.exec);
+  if (r.code === 0) {
+    const result = built.exec.parse(r.stdout);
+    await ref.update({
+      status: "done",
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      result,
+    });
+    console.log(`[cmd] ${built.exec.label} -> done`);
+  } else {
+    const msg = (r.stderr || "").slice(-800) || `exit ${r.code}${r.killed ? " (timeout)" : ""}`;
+    await ref.update({ status: "error", error: msg });
+    console.error(`[cmd] ${built.exec.label} FAILED: ${msg}`);
+  }
+}
+
+/**
  * Loop 2 (Firestore -> engine): listen for owner intake submissions.
  * Client creates  .../submissions/{id}  with status:"requested" (rules enforce
  * shape + scope); the worker is the only thing that transitions it.
@@ -184,10 +229,22 @@ function listen() {
       (err) => console.error("submissions listener error:", err),
     );
 
-  // TODO (next track — NOT this session): a parallel collectionGroup('commands')
-  // listener for approve / reject / requestGeneration, each dispatched to the
-  // EXISTING engine CLI (approval_flow.py / producer skills) per Appendix A.
-  // The spend path (meta_ads activate) is excluded from any whitelist.
+  // Loop 2 (commands): approve / reject / requestGeneration, each dispatched to
+  // an EXISTING engine CLI via dispatch.mjs. The spend path (meta_ads activate)
+  // is structurally absent from every template.
+  db.collectionGroup("commands")
+    .where("status", "==", "requested")
+    .onSnapshot(
+      (snap) => {
+        snap.docChanges().forEach(async (chg) => {
+          if (chg.type !== "added") return;
+          const ref = chg.doc.ref;
+          const data = await claim(ref);
+          if (data) await processCommand(ref, { ...data, ...pathIds(ref) });
+        });
+      },
+      (err) => console.error("commands listener error:", err),
+    );
 }
 
 /** Derive {agencyId, brandId} from the doc path: agencies/{a}/brands/{b}/submissions/{id}. */
