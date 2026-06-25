@@ -1,0 +1,23 @@
+rules_version = '2';
+// Storage rules — owners upload intake photos to their own scoped path; the
+// bridge worker (Admin SDK) reads them and writes generated media. Clients can
+// only write their own uploads, image/video only, size-capped.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function me() { return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data; }
+
+    // owner uploads (intake) — client writes own files, type/size limited
+    match /agencies/{agencyId}/brands/{brandId}/uploads/{uid}/{fileName} {
+      allow read:  if request.auth != null && me().agencyId == agencyId && (brandId in me().brands);
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && me().agencyId == agencyId && (brandId in me().brands)
+                   && request.resource.size < 25 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*|video/.*');
+    }
+    // generated media (worker writes via Admin) — client read-only
+    match /agencies/{agencyId}/brands/{brandId}/media/{allPaths=**} {
+      allow read:  if request.auth != null && me().agencyId == agencyId && (brandId in me().brands);
+      allow write: if false;
+    }
+  }
+}

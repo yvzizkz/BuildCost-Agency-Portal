@@ -1,0 +1,19 @@
+{
+  "_comment": "Sample portal intake submission (the shape bridge.mjs writes and portal_intake.py reads). image.file is a basename resolved against --images-dir. This fixture is illustrative; the test harness builds its own images at runtime.",
+  "submissionId": "sub_demo_0001",
+  "slug": "saddlewood",
+  "title": "Arcadia Kitchen & Great Room",
+  "neighborhood": "Arcadia, Phoenix, AZ",
+  "story": "Walked the job this morning — island set, white oak going in next week. Demo shots from week one too.",
+  "submittedAt": "2026-06-24T15:30:00+00:00",
+  "heroIndex": 0,
+  "images": [
+    { "file": "finished-kitchen.jpg", "process": false },
+    { "file": "finished-greatroom.jpg", "process": false },
+    { "file": "week1-demo.jpg", "process": true }
+  ],
+  "scope": [],
+  "materials": [],
+  "signatureDetails": [],
+  "heroDetail": ""
+}

@@ -1,0 +1,16 @@
+{
+  "name": "buildcost-agency-portal-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bridge worker — the only coupling between the BuildCost owner portal (Firebase) and the Enterprise growth engine. Intake path.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bridge": "node bridge.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

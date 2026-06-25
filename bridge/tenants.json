@@ -1,0 +1,11 @@
+{
+  "_comment": "Tenant map: agencyId -> engine binding. Lives in the portal repo, NEVER in the engine. brandId -> engine slug must match brands/<slug>/brand.json exactly. This is the only place that points the bridge at an engine instance.",
+  "marco-agency": {
+    "repoRoot": "/Users/landos/Documents/Enterprise",
+    "env": "/Users/landos/Documents/Enterprise/.env",
+    "brands": {
+      "saddlewood": "saddlewood",
+      "isramar": "isramar"
+    }
+  }
+}

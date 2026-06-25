@@ -1,0 +1,67 @@
+rules_version = '2';
+// Firestore security rules — owner browsers are bound by these. The bridge
+// worker uses the Admin SDK and BYPASSES them to write authoritative state
+// (queueItems/drafts/reports/engagement) and to transition submissions/commands.
+// Clients read their agency/brand data and may only CREATE well-formed, scoped
+// submissions / commands / comments — never write engine-authored collections.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function inAgency(aid) { return signedIn() && me().agencyId == aid; }
+    function hasBrand(bid) { return signedIn() && (bid in me().brands); }
+    function canApprove() { return signedIn() && (me().role == 'owner' || me().role == 'admin'); }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;                                   // manual seed via Admin in P1
+    }
+
+    match /agencies/{agencyId} {
+      allow read: if inAgency(agencyId);
+      allow write: if false;
+
+      match /brands/{brandId} {
+        allow read: if inAgency(agencyId) && hasBrand(brandId);
+        allow write: if false;
+
+        // engine-authored → client read-only
+        match /queueItems/{id} { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
+        match /drafts/{id}     { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
+        match /reports/{id}    { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
+        match /engagement/{id} { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
+
+        // INTAKE: owner CREATEs a scoped, 'requested' submission; only the worker transitions it.
+        match /submissions/{id} {
+          allow read: if inAgency(agencyId) && hasBrand(brandId);
+          allow create: if inAgency(agencyId) && hasBrand(brandId)
+            && request.resource.data.uploaderUid == request.auth.uid
+            && request.resource.data.status == 'requested'
+            && request.resource.data.title is string
+            && request.resource.data.storagePaths is list
+            && request.resource.data.storagePaths.size() > 0;
+          allow update, delete: if false;
+        }
+
+        // client may CREATE a scoped, 'requested' intent; only the worker transitions it
+        match /commands/{id} {
+          allow read: if inAgency(agencyId) && hasBrand(brandId);
+          allow create: if inAgency(agencyId) && hasBrand(brandId)
+            && request.resource.data.status == 'requested'
+            && request.resource.data.requestedByUid == request.auth.uid
+            && request.resource.data.type in ['approve','reject','submitContent','requestGeneration']
+            && (!(request.resource.data.type in ['approve','reject']) || canApprove());
+          allow update, delete: if false;
+        }
+
+        match /comments/{id} {
+          allow read: if inAgency(agencyId) && hasBrand(brandId);
+          allow create: if inAgency(agencyId) && hasBrand(brandId)
+            && request.resource.data.uid == request.auth.uid;
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}
