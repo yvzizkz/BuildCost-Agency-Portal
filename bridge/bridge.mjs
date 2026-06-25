@@ -32,6 +32,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import admin from "firebase-admin";
 import { buildDispatch } from "./dispatch.mjs";
+import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror } from "./mirror.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "tenants.json"), "utf8"));
@@ -208,6 +209,114 @@ async function processCommand(ref, data) {
   }
 }
 
+// --------------------------------------------------------------------------- //
+// Loop 1 — Mirror (engine -> Firestore): the portal's read view.
+// Watches each agency's review-queue.json, projects every item + its draft into
+// queueItems/drafts (via mirror.mjs), pushes media to Storage, and only writes on
+// a content-hash change. Items that leave the queue are archived (not deleted).
+// --------------------------------------------------------------------------- //
+const mirrorHashes = new Map();          // queueId -> last hash
+let mirrorMeta = new Map();              // queueId -> { agencyId, brandId }
+let mirrorRunning = false;
+let mirrorPending = false;
+
+function readJson(p) {
+  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
+}
+
+function agencyRepos() {
+  return Object.entries(TENANTS)
+    .filter(([id, a]) => !id.startsWith("_") && a && a.repoRoot)
+    .map(([agencyId, a]) => ({ agencyId, repoRoot: a.repoRoot,
+      queuePath: path.join(a.repoRoot, "growth-assets", "review-queue.json") }));
+}
+
+async function runMirror() {
+  if (mirrorRunning) { mirrorPending = true; return; }
+  mirrorRunning = true;
+  try {
+    const projections = [];
+    for (const repo of agencyRepos()) {
+      const q = readJson(repo.queuePath);
+      const items = (q && Array.isArray(q.items)) ? q.items : [];
+      for (const item of items) {
+        const brand = resolveBrand(TENANTS, item.business);
+        if (!brand) continue;                                   // skip unknown slugs
+        const dp = resolveDraftPath(repo.repoRoot, item.link);
+        const draft = (dp && fs.existsSync(dp)) ? readJson(dp) : null;
+        const p = projectItem(item, draft, brand);
+        p.hash = contentHash(p);
+        projections.push(p);
+      }
+    }
+
+    const prevMeta = mirrorMeta;
+    const { upserts, archives } = planMirror(mirrorHashes, projections);
+
+    for (const p of upserts) {
+      const { agencyId, brandId } = p.queueItem;
+      // push media to Storage (only files that exist on disk)
+      for (const a of p.assets) {
+        if (a.storagePath && a.localPath && fs.existsSync(a.localPath)) {
+          await bucket.upload(a.localPath, { destination: a.storagePath, resumable: false });
+        }
+      }
+      const brandRef = db.doc(`agencies/${agencyId}/brands/${brandId}`);
+      await brandRef.collection("queueItems").doc(p.queueId).set(
+        { ...p.queueItem, contentHash: p.hash, mirroredAt: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true });
+      if (p.draft && p.draftId) {
+        await brandRef.collection("drafts").doc(p.draftId).set(
+          { ...p.draft, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }
+    }
+
+    for (const qid of archives) {
+      const meta = prevMeta.get(qid);
+      if (!meta) continue;
+      await db.doc(`agencies/${meta.agencyId}/brands/${meta.brandId}`)
+        .collection("queueItems").doc(qid)
+        .set({ archived: true, archivedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    }
+
+    // roll forward the in-memory state to exactly what's in the queue now
+    mirrorHashes.clear();
+    const nextMeta = new Map();
+    for (const p of projections) {
+      mirrorHashes.set(p.queueId, p.hash);
+      nextMeta.set(p.queueId, { agencyId: p.queueItem.agencyId, brandId: p.queueItem.brandId });
+    }
+    mirrorMeta = nextMeta;
+
+    if (upserts.length || archives.length) {
+      console.log(`[mirror] ${upserts.length} upserted, ${archives.length} archived, ${projections.length} live`);
+    }
+  } catch (e) {
+    console.error("[mirror] pass failed:", e?.message || e);
+  } finally {
+    mirrorRunning = false;
+    if (mirrorPending) { mirrorPending = false; setTimeout(runMirror, 250); }
+  }
+}
+
+/** Initial mirror + watch each growth-assets dir (debounced) + a poll safety net. */
+function startMirror() {
+  console.log("portal bridge: mirroring review-queue -> Firestore…");
+  runMirror();
+  let timer = null;
+  const kick = () => { clearTimeout(timer); timer = setTimeout(runMirror, 1500); };
+  for (const repo of agencyRepos()) {
+    const dir = path.dirname(repo.queuePath);
+    try {
+      // watch the DIR (atomic os.replace swaps the inode, so watching the file alone misses updates)
+      fs.watch(dir, (_evt, fname) => { if (!fname || fname === "review-queue.json") kick(); });
+    } catch (e) {
+      console.warn(`[mirror] cannot watch ${dir} (${e?.message}); relying on poll`);
+    }
+  }
+  setInterval(runMirror, 60_000); // safety net for missed fs events
+}
+
 /**
  * Loop 2 (Firestore -> engine): listen for owner intake submissions.
  * Client creates  .../submissions/{id}  with status:"requested" (rules enforce
@@ -253,4 +362,5 @@ function pathIds(ref) {
   return { agencyId: parts[1], brandId: parts[3] };
 }
 
-listen();
+startMirror();   // Loop 1: engine -> Firestore (read view)
+listen();        // Loop 2: Firestore -> engine (submissions + commands)

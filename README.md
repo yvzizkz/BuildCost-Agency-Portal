@@ -24,17 +24,21 @@ agency-portal/
   storage.rules          # owner uploads (image/video, <25MB); generated media client-read-only
   bridge/
     tenants.json         # agencyId -> { repoRoot, env, brands{ brandId -> engine slug } }
-    bridge.mjs           # Node + firebase-admin: Loop 2 listeners (submissions + commands).
-                         #   Sole writer of Firestore state; all engine calls are argv-only.
-    portal_intake.py     # the ONLY engine-touching file: imports brandlib (read-only) and
+    bridge.mjs           # Node + firebase-admin: Loop 1 mirror + Loop 2 listeners
+                         #   (submissions + commands). Sole writer of Firestore; engine calls argv-only.
+    portal_intake.py     # the ONLY engine-touching writer: imports brandlib (read-only) and
                          #   writes images + ONE pending projects.json record + ONE queue item
     dispatch.mjs         # pure command-dispatch decision layer (approve/reject/requestGeneration):
                          #   allow-list, validation/sanitization, fixed argv templates, spend-path exclusion
+    mirror.mjs           # pure Loop-1 projection: queue item + draft -> Firestore docs + asset list,
+                         #   content-hash + diff (upsert-on-change, archive-on-vanish)
     package.json
   test/
     run_local_intake.py  # end-to-end intake smoke test WITHOUT Firebase (run this)
     test_portal_intake.py# intake edge-case unit tests (python)
     test_dispatch.mjs    # command-dispatch unit tests (node --test) — pure, no engine execution
+    test_mirror.mjs      # mirror projection/hash/diff unit tests (node --test) — pure
+    mirror_dryrun.mjs    # read-only Loop-1 dry run vs the real engine queue (no Firebase, no writes)
     fixtures/            # sample submission.json
   scripts/seed.mjs       # Phase-1 manual Firestore seed (not run yet)
 ```
@@ -102,6 +106,30 @@ notes sanitized; **no template can emit `activate` / `--confirm` / `--i-understa
 / `meta_ads`** — the ad-spend path is structurally unreachable. `submitContent` via a command
 is refused (it's the separate submissions path).
 
+## Loop 1 — mirror (engine → Firestore): the portal's read view
+
+`bridge.mjs` watches each agency's `review-queue.json` (directory watch — `os.replace`
+swaps the inode, so watching the file alone misses updates — plus a 60s poll safety net),
+and for every item projects it + its draft into Firestore so the portal can render the
+queue. `bridge/mirror.mjs` holds the pure logic:
+
+- **resolve** the item's `business` slug → `{agencyId, brandId}` via the tenant map (reverse
+  lookup); unknown slugs are skipped.
+- **read the draft** at `item.link` (absolute *or* relative-to-repoRoot — both resolved);
+  intake items point at `projects.json` (not a draft) and neighborhood-pages have no media —
+  both handled gracefully.
+- **project** into a `queueItems/{queueId}` doc (status, schedule, summary, …) + a
+  `drafts/{draftId}` doc (copy, `voiceCheck`, `mediaQA`, asset refs). Asset refs carry a
+  `storagePath` only — absolute local paths never reach Firestore.
+- **push media** (image/video) to Storage at `agencies/{a}/brands/{b}/media/{draftId}/{file}`.
+- **content-hash + diff:** only write on a real change (no write storms); items that leave the
+  queue are `archived:true` (history kept, never deleted). The worker is the sole writer of
+  these collections (Admin SDK).
+
+Verified against the live queue with `node test/mirror_dryrun.mjs` (read-only): all 18 real
+items project correctly — social/reel/carousel/neighborhood-page/intake — 19 assets located,
+0 unmapped.
+
 ## Run the tests (no Firebase needed)
 
 These point all writes at a throwaway sandbox; the live reference library and the
@@ -111,8 +139,10 @@ with `ENTERPRISE_ROOT`); the dispatch tests execute no engine code at all.
 
 ```bash
 python3 test/run_local_intake.py          # intake end-to-end + idempotency
-python3 test/test_portal_intake.py         # intake edge cases
-node --test test/test_dispatch.mjs         # command-dispatch (18 cases)
+python3 test/test_portal_intake.py         # intake edge cases (7)
+node --test test/test_dispatch.mjs         # command-dispatch (18)
+node --test test/test_mirror.mjs           # mirror projection/hash/diff (11)
+node test/mirror_dryrun.mjs                # Loop-1 dry run vs the real engine queue (read-only)
 python3 -m py_compile bridge/portal_intake.py && node --check bridge/bridge.mjs
 ```
 
@@ -129,10 +159,8 @@ and is separate from the engine's GSC/Vertex SA. Run **exactly one** instance.
 
 ## Not in this repo yet
 
-- **Loop 1 — mirror (engine → Firestore):** watch `growth-assets/review-queue.json`,
-  resolve each draft, push media to Storage, upsert `queueItems`/`drafts` so the portal
-  has a read view (and `requestGeneration` results surface). The command path above
-  already works; this is what makes the queue *visible* in the portal.
 - The Next.js UI + Firebase Auth (email magic-link) on Firebase App Hosting (Marco via `/orchestrate`).
 - Creating the live Firebase project + `portal-bridge` Admin SA, and running `scripts/seed.mjs`.
+- First live run: with the Firebase project up, `cd bridge && npm install` then start the worker —
+  Loop 1 will populate `queueItems`/`drafts` + Storage on the first pass.
 ```
