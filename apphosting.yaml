@@ -1,3 +1,27 @@
 # Settings for Firebase App Hosting
 # https://firebase.google.com/docs/app-hosting/configure
+#
+# NEXT_PUBLIC_* are PUBLIC client config (not secrets) and are inlined at build time,
+# so they must be present at BUILD. They mirror .env.local (which is gitignored for local dev).
+# NEXT_PUBLIC_APP_URL is intentionally omitted: lib/auth.tsx falls back to window.location.origin,
+# so the magic-link continue URL uses the real deployed App Hosting domain automatically.
 schemaVersion: v1
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyAg9iaPhZkdH2oSyD4rLExVKwxk_9zXetQ"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "buildcost-portal.firebaseapp.com"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "buildcost-portal"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "buildcost-portal.firebasestorage.app"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "577443802350"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:577443802350:web:2cde8e2aca3abf5f7657ff"
+    availability: [BUILD, RUNTIME]
