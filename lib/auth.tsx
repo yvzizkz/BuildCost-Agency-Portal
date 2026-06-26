@@ -19,9 +19,19 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   sendLink: (email: string) => Promise<void>;
-  completeLink: () => Promise<void>;
+  completeLink: (emailOverride?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
+
+// Thrown by completeLink when the link was opened on a different device/browser
+// than where it was requested, so the email isn't in localStorage and Firebase
+// requires it to finish sign-in (anti-hijack protection). The login page catches
+// this to render a clean confirm field instead of a window.prompt.
+export const EMAIL_REQUIRED = 'EMAIL_REQUIRED';
+
+// Normalize so a stray capital / trailing space from a mobile keyboard can't
+// cause the email to mismatch the one the link was issued for.
+const normalizeEmail = (email: string) => (email || '').trim().toLowerCase();
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -57,29 +67,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const sendLink = async (email: string) => {
+    const cleanEmail = normalizeEmail(email);
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
     const actionCodeSettings = {
       url: `${baseUrl}/login`,
       handleCodeInApp: true,
     };
-    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+    await sendSignInLinkToEmail(auth, cleanEmail, actionCodeSettings);
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('emailForSignIn', email);
+      window.localStorage.setItem('emailForSignIn', cleanEmail);
     }
   };
 
-  const completeLink = async () => {
+  const completeLink = async (emailOverride?: string) => {
     if (typeof window === 'undefined') return;
-    if (isSignInWithEmailLink(auth, window.location.href)) {
-      let email = window.localStorage.getItem('emailForSignIn');
-      if (!email) {
-        email = window.prompt('Please provide your email for confirmation:');
-      }
-      if (email) {
-        await signInWithEmailLink(auth, email, window.location.href);
-        window.localStorage.removeItem('emailForSignIn');
-      }
-    }
+    if (!isSignInWithEmailLink(auth, window.location.href)) return;
+    // Prefer an explicitly-confirmed email, else the one we stored when the link
+    // was requested on this browser. No window.prompt — the login page renders a
+    // proper confirm field when this throws EMAIL_REQUIRED.
+    const email = normalizeEmail(emailOverride || window.localStorage.getItem('emailForSignIn') || '');
+    if (!email) throw new Error(EMAIL_REQUIRED);
+    await signInWithEmailLink(auth, email, window.location.href);
+    window.localStorage.removeItem('emailForSignIn');
   };
 
   const signOut = async () => {
