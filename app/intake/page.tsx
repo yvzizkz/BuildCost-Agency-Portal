@@ -1,17 +1,225 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { BrandDoc } from '@/lib/types';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { uploadAndSubmit } from '@/lib/submissions';
 import Link from 'next/link';
+import { logger } from '@/lib/logger';
+import { useBrands } from '@/lib/useBrands';
+import { BrandDoc } from '@/lib/types';
+
+interface MediaFileListProps {
+  files: File[];
+  heroIndex: number;
+  processIndexes: Set<number>;
+  onRemove: (index: number) => void;
+  onSetHero: (index: number) => void;
+  onToggleProcess: (index: number, checked: boolean) => void;
+}
+
+function MediaFileList({
+  files,
+  heroIndex,
+  processIndexes,
+  onRemove,
+  onSetHero,
+  onToggleProcess,
+}: MediaFileListProps) {
+  if (files.length === 0) return null;
+
+  return (
+    <div className="selected-files-list">
+      {files.map((file, idx) => (
+        <div key={idx} className="selected-file-item">
+          <span className="file-item-name">
+            {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
+          </span>
+          <div className="file-item-controls">
+            <label className="file-control-label">
+              <input
+                type="radio"
+                name="hero-select"
+                checked={heroIndex === idx}
+                onChange={() => onSetHero(idx)}
+                className="file-control-radio"
+              />
+              <span>Hero</span>
+            </label>
+            <label className="file-control-label">
+              <input
+                type="checkbox"
+                checked={processIndexes.has(idx)}
+                onChange={(e) => onToggleProcess(idx, e.target.checked)}
+                className="file-control-checkbox"
+              />
+              <span>In-progress shot</span>
+            </label>
+            <button
+              type="button"
+              className="btn-remove-file"
+              onClick={() => onRemove(idx)}
+              title="Remove file"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface IntakeFormProps {
+  brands: BrandDoc[];
+  selectedBrandId: string | null;
+  setSelectedBrandId: (id: string) => void;
+  title: string;
+  setTitle: (t: string) => void;
+  neighborhood: string;
+  setNeighborhood: (n: string) => void;
+  note: string;
+  setNote: (n: string) => void;
+  files: File[];
+  heroIndex: number;
+  processIndexes: Set<number>;
+  submitting: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveFile: (index: number) => void;
+  onSetHero: (index: number) => void;
+  onToggleProcess: (index: number, checked: boolean) => void;
+}
+
+function IntakeForm({
+  brands,
+  selectedBrandId,
+  setSelectedBrandId,
+  title,
+  setTitle,
+  neighborhood,
+  setNeighborhood,
+  note,
+  setNote,
+  files,
+  heroIndex,
+  processIndexes,
+  submitting,
+  onSubmit,
+  onFileChange,
+  onRemoveFile,
+  onSetHero,
+  onToggleProcess,
+}: IntakeFormProps) {
+  return (
+    <form onSubmit={onSubmit} className="intake-form">
+      <div className="form-group">
+        <label htmlFor="intake-brand" className="form-label">
+          Brand Target
+        </label>
+        <div className="select-wrapper">
+          <select
+            id="intake-brand"
+            value={selectedBrandId || ''}
+            onChange={(e) => setSelectedBrandId(e.target.value)}
+            className="brand-picker-select"
+            required
+          >
+            <option value="" disabled>
+              Select target brand...
+            </option>
+            {brands.map((brand) => (
+              <option key={brand.slug} value={brand.slug}>
+                {brand.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="intake-title" className="form-label">
+          Project Title
+        </label>
+        <input
+          id="intake-title"
+          type="text"
+          placeholder="e.g. Master Bathroom Complete"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="form-input"
+          required
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="intake-neighborhood" className="form-label">
+          Neighborhood / Area (Optional)
+        </label>
+        <input
+          id="intake-neighborhood"
+          type="text"
+          placeholder="e.g. Saddlewood North"
+          value={neighborhood}
+          onChange={(e) => setNeighborhood(e.target.value)}
+          className="form-input"
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="intake-note" className="form-label">
+          Notes (Optional)
+        </label>
+        <textarea
+          id="intake-note"
+          placeholder="Instructions for copywriting style, details of materials used..."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className="form-input"
+          rows={4}
+        />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Media Files</label>
+        <label htmlFor="file-upload" className="file-dropzone">
+          <input
+            id="file-upload"
+            type="file"
+            multiple
+            accept="image/*,video/*"
+            onChange={onFileChange}
+            style={{ display: 'none' }}
+          />
+          <div className="file-dropzone-text">Click to browse image or video files</div>
+          <div className="file-dropzone-sub">Images and Videos up to 25MB are supported</div>
+        </label>
+
+        <MediaFileList
+          files={files}
+          heroIndex={heroIndex}
+          processIndexes={processIndexes}
+          onRemove={onRemoveFile}
+          onSetHero={onSetHero}
+          onToggleProcess={onToggleProcess}
+        />
+      </div>
+
+      <button type="submit" className="btn-primary" disabled={submitting || files.length === 0}>
+        {submitting ? 'Uploading and Submitting...' : 'Submit Media Package'}
+      </button>
+    </form>
+  );
+}
 
 export default function IntakePage() {
   const { user, profile, signOut } = useAuth();
-  const [brands, setBrands] = useState<BrandDoc[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const {
+    brands,
+    selectedBrandId,
+    setSelectedBrandId,
+    loading: loadingBrands,
+    error: brandsError,
+  } = useBrands(profile);
   
   const [title, setTitle] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -20,40 +228,9 @@ export default function IntakePage() {
   const [heroIndex, setHeroIndex] = useState<number>(0);
   const [processIndexes, setProcessIndexes] = useState<Set<number>>(new Set());
   
-  const [loadingBrands, setLoadingBrands] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (profile && profile.brands && profile.brands.length > 0) {
-      setLoadingBrands(true);
-      const fetchAllBrands = async () => {
-        try {
-          const brandPromises = profile.brands.map(async (bid) => {
-            const brandDocRef = doc(db, 'agencies', profile.agencyId, 'brands', bid);
-            const docSnap = await getDoc(brandDocRef);
-            if (docSnap.exists()) {
-              return { slug: bid, ...docSnap.data() } as BrandDoc;
-            }
-            return null;
-          });
-          const resolvedBrands = await Promise.all(brandPromises);
-          const brandDocs = resolvedBrands.filter((b): b is BrandDoc => b !== null);
-          setBrands(brandDocs);
-          if (brandDocs.length > 0) {
-            setSelectedBrandId(brandDocs[0].slug);
-          }
-        } catch (err: any) {
-          console.error(err);
-          setError('Failed to fetch brand permissions.');
-        } finally {
-          setLoadingBrands(false);
-        }
-      };
-      fetchAllBrands();
-    }
-  }, [profile]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -143,7 +320,7 @@ export default function IntakePage() {
       setHeroIndex(0);
       setProcessIndexes(new Set());
     } catch (err: any) {
-      console.error(err);
+      logger.error('IntakePage:handleSubmit', err);
       setError(err.message || 'Failed to submit media package.');
     } finally {
       setSubmitting(false);
@@ -185,140 +362,43 @@ export default function IntakePage() {
               Upload photos or videos of project sites to trigger AI content generation cycles.
             </p>
 
-            {error && <div className="error-banner" style={{ marginBottom: '1.5rem' }}>{error}</div>}
+            {(error || brandsError) && (
+              <div className="error-banner" style={{ marginBottom: '1.5rem' }}>
+                {error || brandsError}
+              </div>
+            )}
             {success && <div className="success-banner" style={{ marginBottom: '1.5rem' }}>{success}</div>}
 
-            <form onSubmit={handleSubmit} className="intake-form">
-              <div className="form-group">
-                <label htmlFor="intake-brand" className="form-label">Brand Target</label>
-                <div className="select-wrapper">
-                  <select
-                    id="intake-brand"
-                    value={selectedBrandId || ''}
-                    onChange={(e) => setSelectedBrandId(e.target.value)}
-                    className="brand-picker-select"
-                    required
-                  >
-                    <option value="" disabled>Select target brand...</option>
-                    {brands.map((brand) => (
-                      <option key={brand.slug} value={brand.slug}>
-                        {brand.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="intake-title" className="form-label">Project Title</label>
-                <input
-                  id="intake-title"
-                  type="text"
-                  placeholder="e.g. Master Bathroom Complete"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="form-input"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="intake-neighborhood" className="form-label">Neighborhood / Area (Optional)</label>
-                <input
-                  id="intake-neighborhood"
-                  type="text"
-                  placeholder="e.g. Saddlewood North"
-                  value={neighborhood}
-                  onChange={(e) => setNeighborhood(e.target.value)}
-                  className="form-input"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="intake-note" className="form-label">Notes (Optional)</label>
-                <textarea
-                  id="intake-note"
-                  placeholder="Instructions for copywriting style, details of materials used..."
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="form-input"
-                  rows={4}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Media Files</label>
-                <label htmlFor="file-upload" className="file-dropzone">
-                  <input
-                    id="file-upload"
-                    type="file"
-                    multiple
-                    accept="image/*,video/*"
-                    onChange={handleFileChange}
-                    style={{ display: 'none' }}
-                  />
-                  <div className="file-dropzone-text">Click to browse image or video files</div>
-                  <div className="file-dropzone-sub">Images and Videos up to 25MB are supported</div>
-                </label>
-
-                {files.length > 0 && (
-                  <div className="selected-files-list">
-                    {files.map((file, idx) => (
-                      <div key={idx} className="selected-file-item">
-                        <span className="file-item-name">{file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
-                        <div className="file-item-controls">
-                          <label className="file-control-label">
-                            <input
-                              type="radio"
-                              name="hero-select"
-                              checked={heroIndex === idx}
-                              onChange={() => setHeroIndex(idx)}
-                              className="file-control-radio"
-                            />
-                            <span>Hero</span>
-                          </label>
-                          <label className="file-control-label">
-                            <input
-                              type="checkbox"
-                              checked={processIndexes.has(idx)}
-                              onChange={(e) => {
-                                setProcessIndexes((prev) => {
-                                  const next = new Set(prev);
-                                  if (e.target.checked) {
-                                    next.add(idx);
-                                  } else {
-                                    next.delete(idx);
-                                  }
-                                  return next;
-                                });
-                              }}
-                              className="file-control-checkbox"
-                            />
-                            <span>In-progress shot</span>
-                          </label>
-                          <button
-                            type="button"
-                            className="btn-remove-file"
-                            onClick={() => handleRemoveFile(idx)}
-                            title="Remove file"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={submitting || files.length === 0}
-              >
-                {submitting ? 'Uploading and Submitting...' : 'Submit Media Package'}
-              </button>
-            </form>
+            <IntakeForm
+              brands={brands}
+              selectedBrandId={selectedBrandId}
+              setSelectedBrandId={setSelectedBrandId}
+              title={title}
+              setTitle={setTitle}
+              neighborhood={neighborhood}
+              setNeighborhood={setNeighborhood}
+              note={note}
+              setNote={setNote}
+              files={files}
+              heroIndex={heroIndex}
+              processIndexes={processIndexes}
+              submitting={submitting}
+              onSubmit={handleSubmit}
+              onFileChange={handleFileChange}
+              onRemoveFile={handleRemoveFile}
+              onSetHero={(idx) => setHeroIndex(idx)}
+              onToggleProcess={(idx, checked) => {
+                setProcessIndexes((prev) => {
+                  const next = new Set(prev);
+                  if (checked) {
+                    next.add(idx);
+                  } else {
+                    next.delete(idx);
+                  }
+                  return next;
+                });
+              }}
+            />
           </div>
         )}
       </main>

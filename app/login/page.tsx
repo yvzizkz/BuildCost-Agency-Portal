@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import { logger } from '@/lib/logger';
 
 export default function LoginPage() {
   const { sendLink, completeLink, user, profile } = useAuth();
@@ -26,7 +27,7 @@ export default function LoginPage() {
         try {
           await completeLink();
         } catch (err: any) {
-          console.error(err);
+          logger.error('LoginPage:completeLink', err);
           setError(err.message || 'Failed to complete sign-in. Link may be expired.');
           setLoading(false);
         }
@@ -44,7 +45,7 @@ export default function LoginPage() {
       await sendLink(email);
       setSent(true);
     } catch (err: any) {
-      console.error(err);
+      logger.error('LoginPage:sendLink', err);
       setError(err.message || 'Failed to send login link.');
     } finally {
       setLoading(false);

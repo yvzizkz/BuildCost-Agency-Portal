@@ -24,18 +24,10 @@ export interface SubmissionInput {
   processIndexes: number[];
 }
 
-export async function uploadAndSubmit(
-  agencyId: string,
-  brandId: string,
-  uid: string,
-  input: SubmissionInput
-): Promise<string> {
-  const { title, neighborhood, note, files } = input;
+function validateSubmissionFiles(files: File[]) {
   if (!files || files.length === 0) {
     throw new Error('At least one file is required for submission.');
   }
-
-  const storagePaths: string[] = [];
   for (const file of files) {
     if (file.size >= 25 * 1024 * 1024) {
       throw new Error(`File ${file.name} exceeds the 25MB limit.`);
@@ -43,7 +35,17 @@ export async function uploadAndSubmit(
     if (!file.type.match(/^image\//) && !file.type.match(/^video\//)) {
       throw new Error(`File ${file.name} is not an image or video.`);
     }
+  }
+}
 
+async function uploadMediaToStorage(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  files: File[]
+): Promise<string[]> {
+  const storagePaths: string[] = [];
+  for (const file of files) {
     const uniqueFileName = `${Date.now()}_${sanitizeFileName(file.name)}`;
     const storagePath = `agencies/${agencyId}/brands/${brandId}/uploads/${uid}/${uniqueFileName}`;
     const storageRef = ref(storage, storagePath);
@@ -51,10 +53,15 @@ export async function uploadAndSubmit(
     await uploadBytes(storageRef, file);
     storagePaths.push(storagePath);
   }
+  return storagePaths;
+}
 
-  const submissionCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'submissions');
-  const submissionDocRef = doc(submissionCol);
-
+function prepareSubmissionData(
+  uid: string,
+  input: SubmissionInput,
+  storagePaths: string[]
+) {
+  const { title, neighborhood, note } = input;
   const submissionData: any = {
     uploaderUid: uid,
     status: 'requested',
@@ -66,9 +73,12 @@ export async function uploadAndSubmit(
   if (neighborhood) submissionData.neighborhood = neighborhood;
   if (note) submissionData.note = note;
 
-  const finalHeroIndex = (input.heroIndex !== undefined && input.heroIndex >= 0 && input.heroIndex < storagePaths.length)
-    ? input.heroIndex
-    : 0;
+  const finalHeroIndex =
+    input.heroIndex !== undefined &&
+    input.heroIndex >= 0 &&
+    input.heroIndex < storagePaths.length
+      ? input.heroIndex
+      : 0;
 
   if (storagePaths.length > 0) {
     submissionData.heroStoragePath = storagePaths[finalHeroIndex];
@@ -90,6 +100,23 @@ export async function uploadAndSubmit(
     submissionData.processStoragePaths = processPaths;
   }
 
+  return submissionData;
+}
+
+export async function uploadAndSubmit(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  input: SubmissionInput
+): Promise<string> {
+  validateSubmissionFiles(input.files);
+
+  const storagePaths = await uploadMediaToStorage(agencyId, brandId, uid, input.files);
+
+  const submissionData = prepareSubmissionData(uid, input, storagePaths);
+
+  const submissionCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'submissions');
+  const submissionDocRef = doc(submissionCol);
   await setDoc(submissionDocRef, submissionData);
 
   return submissionDocRef.id;
