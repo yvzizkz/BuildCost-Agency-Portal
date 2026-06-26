@@ -2,6 +2,19 @@ import { ref, uploadBytes } from 'firebase/storage';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { db, storage } from './firebase';
 
+// Storage object keys are built from the client-supplied File.name. A crafted name
+// (e.g. "../../other-uid/x.jpg" or one with control chars / "#" / "?") could produce
+// an escaping or malformed key, so we drop any path components and allow only a safe
+// charset before interpolating it into the storage path. Defense-in-depth: the Storage
+// rules still scope writes to uploads/{uid}/, this just keeps keys clean and predictable.
+function sanitizeFileName(name: string): string {
+  const base = (name || '').split(/[\\/]/).pop() || 'file';
+  const cleaned = base
+    .replace(/[^A-Za-z0-9._-]+/g, '_') // only alphanumerics, dot, underscore, hyphen
+    .replace(/^\.+/, ''); // no leading dots -> kills "." / ".." path segments
+  return cleaned.slice(0, 128) || 'file';
+}
+
 export interface SubmissionInput {
   title: string;
   neighborhood?: string;
@@ -31,7 +44,7 @@ export async function uploadAndSubmit(
       throw new Error(`File ${file.name} is not an image or video.`);
     }
 
-    const uniqueFileName = `${Date.now()}_${file.name}`;
+    const uniqueFileName = `${Date.now()}_${sanitizeFileName(file.name)}`;
     const storagePath = `agencies/${agencyId}/brands/${brandId}/uploads/${uid}/${uniqueFileName}`;
     const storageRef = ref(storage, storagePath);
 
