@@ -7,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { uploadAndSubmit } from '@/lib/submissions';
 import Link from 'next/link';
+import { getErrorMessage } from '@/lib/utils';
 
 export default function IntakePage() {
   const { user, profile, signOut } = useAuth();
@@ -44,7 +45,7 @@ export default function IntakePage() {
           if (brandDocs.length > 0) {
             setSelectedBrandId(brandDocs[0].slug);
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(err);
           setError('Failed to fetch brand permissions.');
         } finally {
@@ -142,9 +143,9 @@ export default function IntakePage() {
       setFiles([]);
       setHeroIndex(0);
       setProcessIndexes(new Set());
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Failed to submit media package.');
+      setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

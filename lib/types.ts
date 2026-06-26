@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface UserProfile {
   agencyId: string;
   role: 'owner' | 'admin' | string;
@@ -18,14 +20,14 @@ export interface QueueItem {
   summary: string;
   action: string;
   status: string;
-  createdAt: any; // Firestore Timestamp
+  createdAt: Timestamp | string | number;
   estMinutes: number;
   draftId?: string;
   mediaCount: number;
   archived: boolean;
   scheduleDate?: string;
-  approvedAt?: any;
-  rejectedAt?: any;
+  approvedAt?: Timestamp | string | number;
+  rejectedAt?: Timestamp | string | number;
   revisionNotes?: string;
   publishCommand?: string;
   projectId?: string;
@@ -48,7 +50,7 @@ export interface DraftCopy {
   hashtags?: string | string[];
   cta?: string;
   // neighborhood shape or other custom properties
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface Draft {
@@ -92,7 +94,7 @@ export interface CommandDoc {
   notes?: string;
   payload?: {
     producer?: 'social' | 'reel' | string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   createdAtMs: number;
 }
