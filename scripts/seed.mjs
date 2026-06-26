@@ -16,8 +16,9 @@ const BRANDS = [
   { id: "isramar", displayName: "Isramar Construction", status: "active" },
 ];
 const OWNERS = [
-  { email: "marco@saddlewoodcontracting.com", role: "owner" }, // Marco
-  { email: "ilene8a@gmail.com", role: "owner" },               // Ilene (set the real email before running)
+  { email: "marco@saddlewoodcontracting.com", role: "owner" }, // Marco (all brands)
+  { email: "ilene8a@gmail.com", role: "owner" },               // Ilene (all brands)
+  { email: "info@saddlewoodcontracting.com", role: "owner", brands: ["saddlewood"] }, // Saddlewood team — saddlewood only
 ];
 
 async function uidFor(email) { // create if absent; they verify via magic-link on 1st login
@@ -36,7 +37,7 @@ const brandIds = BRANDS.map((b) => b.id), ownerUids = [];
 for (const o of OWNERS) {
   const uid = await uidFor(o.email);
   ownerUids.push(uid);
-  await db.doc(`users/${uid}`).set({ agencyId: AGENCY, role: o.role, brands: brandIds }, { merge: true });
+  await db.doc(`users/${uid}`).set({ agencyId: AGENCY, role: o.role, brands: o.brands || brandIds }, { merge: true });
   // optional custom-claims optimization (skips the per-rule users/ read):
   // await auth.setCustomUserClaims(uid, { agencyId: AGENCY, role: o.role, brands: brandIds });
 }
