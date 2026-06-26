@@ -30,14 +30,16 @@ export default function IntakePage() {
       setLoadingBrands(true);
       const fetchAllBrands = async () => {
         try {
-          const brandDocs: BrandDoc[] = [];
-          for (const bid of profile.brands) {
+          const brandPromises = profile.brands.map(async (bid) => {
             const brandDocRef = doc(db, 'agencies', profile.agencyId, 'brands', bid);
             const docSnap = await getDoc(brandDocRef);
             if (docSnap.exists()) {
-              brandDocs.push({ slug: bid, ...docSnap.data() } as BrandDoc);
+              return { slug: bid, ...docSnap.data() } as BrandDoc;
             }
-          }
+            return null;
+          });
+          const resolvedBrands = await Promise.all(brandPromises);
+          const brandDocs = resolvedBrands.filter((b): b is BrandDoc => b !== null);
           setBrands(brandDocs);
           if (brandDocs.length > 0) {
             setSelectedBrandId(brandDocs[0].slug);
