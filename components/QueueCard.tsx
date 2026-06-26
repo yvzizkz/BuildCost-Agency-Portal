@@ -110,12 +110,14 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
     try {
       // One command per format — each becomes its own draft + review card (the bridge maps
       // it to studio --project <id> --media <fmt> --slot <fmt>, draft-only).
-      for (const media of selectedFormats) {
-        await requestGeneration(agencyId, brandId, uid, 'social', {
-          project: item.projectId,
-          media,
-        });
-      }
+      await Promise.all(
+        selectedFormats.map((media) =>
+          requestGeneration(agencyId, brandId, uid, 'social', {
+            project: item.projectId,
+            media,
+          })
+        )
+      );
       setGenMsg(
         `Queued ${selectedFormats.length} mockup${selectedFormats.length > 1 ? 's' : ''} — drafts will appear here shortly.`
       );
