@@ -30,6 +30,8 @@ export interface QueueItem {
   publishCommand?: string;
   projectId?: string;
   source?: string;
+  ghlStatus?: string; // 'draft' once approve has pushed it to the GHL Social Planner
+  ghlPostId?: string;
 }
 
 export interface DraftAsset {
