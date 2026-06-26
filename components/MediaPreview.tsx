@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 import { DraftAsset } from '@/lib/types';
+import { logger } from '@/lib/logger';
 
 interface MediaPreviewProps {
   asset: DraftAsset;
@@ -27,7 +28,7 @@ export default function MediaPreview({ asset }: MediaPreviewProps) {
         }
       })
       .catch((err) => {
-        console.error('Error fetching storage URL:', err);
+        logger.error('MediaPreview', err);
         if (active) {
           setError('Failed to load media');
           setLoading(false);

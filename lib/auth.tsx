@@ -12,6 +12,8 @@ import {
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile } from './types';
+import { getErrorMessage } from './utils';
+import { logger } from './logger';
 
 interface AuthContextType {
   user: User | null;
@@ -41,8 +43,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             setProfile(null);
           }
-        } catch (error) {
-          console.error("Error loading user profile:", error);
+        } catch (error: unknown) {
+          logger.error('AuthProvider', error);
           setProfile(null);
         }
       } else {

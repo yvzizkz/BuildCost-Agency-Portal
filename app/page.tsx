@@ -2,54 +2,32 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { BrandDoc, QueueItem } from '@/lib/types';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { QueueItem } from '@/lib/types';
 import { subscribeToQueue } from '@/lib/queue';
 import { requestGeneration } from '@/lib/commands';
 import BrandPicker from '@/components/BrandPicker';
 import QueueCard from '@/components/QueueCard';
 import Link from 'next/link';
+import { getErrorMessage } from '@/lib/utils';
+import { logger } from '@/lib/logger';
+import { useBrands } from '@/lib/useBrands';
 
 export default function HomePage() {
   const { user, profile, signOut } = useAuth();
-  const [brands, setBrands] = useState<BrandDoc[]>([]);
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const {
+    brands,
+    selectedBrandId,
+    setSelectedBrandId,
+    loading: loadingBrands,
+    error: brandsError,
+  } = useBrands(profile);
+
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingQueue, setLoadingQueue] = useState(false);
   
   const [error, setError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-
-  useEffect(() => {
-    if (profile && profile.brands && profile.brands.length > 0) {
-      setLoadingBrands(true);
-      const fetchAllBrands = async () => {
-        try {
-          const brandDocs: BrandDoc[] = [];
-          for (const bid of profile.brands) {
-            const brandDocRef = doc(db, 'agencies', profile.agencyId, 'brands', bid);
-            const docSnap = await getDoc(brandDocRef);
-            if (docSnap.exists()) {
-              brandDocs.push({ slug: bid, ...docSnap.data() } as BrandDoc);
-            }
-          }
-          setBrands(brandDocs);
-          if (brandDocs.length > 0) {
-            setSelectedBrandId(brandDocs[0].slug);
-          }
-        } catch (err: any) {
-          console.error('Error fetching brands:', err);
-          setError('Failed to fetch brand permissions.');
-        } finally {
-          setLoadingBrands(false);
-        }
-      };
-      fetchAllBrands();
-    }
-  }, [profile]);
 
   useEffect(() => {
     if (profile && selectedBrandId) {
@@ -62,7 +40,7 @@ export default function HomePage() {
           setLoadingQueue(false);
         },
         (err) => {
-          console.error('Queue subscription error:', err);
+          logger.error('HomePage:subscribeToQueue', err);
           setError('Failed to load queue items.');
           setLoadingQueue(false);
         }
@@ -81,9 +59,9 @@ export default function HomePage() {
     try {
       await requestGeneration(profile.agencyId, selectedBrandId, user.uid, producer);
       setGenSuccess(`Requested generation for "${producer === 'social' ? 'Social Post' : 'Reel Video'}"`);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to dispatch generation command.');
+    } catch (err: unknown) {
+      logger.error('HomePage:handleGenerate', err);
+      setError(getErrorMessage(err));
     } finally {
       setGenerating(false);
     }
@@ -158,7 +136,11 @@ export default function HomePage() {
               )}
             </div>
 
-            {error && <div className="error-banner" style={{ marginBottom: '1.5rem' }}>{error}</div>}
+            {(error || brandsError) && (
+              <div className="error-banner" style={{ marginBottom: '1.5rem' }}>
+                {error || brandsError}
+              </div>
+            )}
 
             <h2 style={{ marginBottom: '1.5rem', fontWeight: 700, fontSize: '1.5rem' }}>
               Approval Queue
