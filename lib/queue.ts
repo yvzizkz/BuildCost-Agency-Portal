@@ -6,7 +6,7 @@ export function subscribeToQueue(
   agencyId: string,
   brandId: string,
   onUpdate: (items: QueueItem[]) => void,
-  onError: (err: any) => void
+  onError: (err: unknown) => void
 ) {
   const q = query(
     collection(db, 'agencies', agencyId, 'brands', brandId, 'queueItems'),

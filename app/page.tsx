@@ -10,6 +10,7 @@ import { requestGeneration } from '@/lib/commands';
 import BrandPicker from '@/components/BrandPicker';
 import QueueCard from '@/components/QueueCard';
 import Link from 'next/link';
+import { getErrorMessage } from '@/lib/utils';
 
 export default function HomePage() {
   const { user, profile, signOut } = useAuth();
@@ -40,7 +41,7 @@ export default function HomePage() {
           if (brandDocs.length > 0) {
             setSelectedBrandId(brandDocs[0].slug);
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('Error fetching brands:', err);
           setError('Failed to fetch brand permissions.');
         } finally {
@@ -81,9 +82,9 @@ export default function HomePage() {
     try {
       await requestGeneration(profile.agencyId, selectedBrandId, user.uid, producer);
       setGenSuccess(`Requested generation for "${producer === 'social' ? 'Social Post' : 'Reel Video'}"`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Failed to dispatch generation command.');
+      setError(getErrorMessage(err));
     } finally {
       setGenerating(false);
     }

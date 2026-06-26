@@ -5,6 +5,7 @@ import { QueueItem, Draft } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
 import { approve, reject, requestGeneration } from '@/lib/commands';
 import MediaPreview from './MediaPreview';
+import { getErrorMessage } from '@/lib/utils';
 
 interface QueueCardProps {
   item: QueueItem;
@@ -65,9 +66,9 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
     try {
       await approve(agencyId, brandId, uid, item.queueId);
       setSuccessMsg('Approval command submitted successfully!');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Failed to submit approval command.');
+      setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -88,9 +89,9 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
       setSuccessMsg('Rejection command submitted successfully!');
       setRejecting(false);
       setNotes('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Failed to submit rejection command.');
+      setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -119,9 +120,9 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
       setGenMsg(
         `Queued ${selectedFormats.length} mockup${selectedFormats.length > 1 ? 's' : ''} — drafts will appear here shortly.`
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || 'Failed to queue mockups.');
+      setError(getErrorMessage(err));
     } finally {
       setGenerating(false);
     }

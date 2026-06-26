@@ -24,6 +24,18 @@ export interface SubmissionInput {
   processIndexes: number[];
 }
 
+interface SubmissionData {
+  uploaderUid: string;
+  status: 'requested';
+  title: string;
+  storagePaths: string[];
+  createdAtMs: number;
+  neighborhood?: string;
+  note?: string;
+  heroStoragePath?: string;
+  processStoragePaths?: string[];
+}
+
 export async function uploadAndSubmit(
   agencyId: string,
   brandId: string,
@@ -55,7 +67,7 @@ export async function uploadAndSubmit(
   const submissionCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'submissions');
   const submissionDocRef = doc(submissionCol);
 
-  const submissionData: any = {
+  const submissionData: SubmissionData = {
     uploaderUid: uid,
     status: 'requested',
     title,
