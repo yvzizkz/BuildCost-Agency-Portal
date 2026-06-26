@@ -35,8 +35,7 @@ export async function uploadAndSubmit(
     throw new Error('At least one file is required for submission.');
   }
 
-  const storagePaths: string[] = [];
-  for (const file of files) {
+  const uploadPromises = files.map(async (file) => {
     if (file.size >= 25 * 1024 * 1024) {
       throw new Error(`File ${file.name} exceeds the 25MB limit.`);
     }
@@ -49,8 +48,10 @@ export async function uploadAndSubmit(
     const storageRef = ref(storage, storagePath);
 
     await uploadBytes(storageRef, file);
-    storagePaths.push(storagePath);
-  }
+    return storagePath;
+  });
+
+  const storagePaths = await Promise.all(uploadPromises);
 
   const submissionCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'submissions');
   const submissionDocRef = doc(submissionCol);
@@ -76,11 +77,13 @@ export async function uploadAndSubmit(
 
   const processPaths: string[] = [];
   if (input.processIndexes) {
+    const seenPaths = new Set<string>();
     for (const idx of input.processIndexes) {
       if (idx >= 0 && idx < storagePaths.length && idx !== finalHeroIndex) {
         const path = storagePaths[idx];
-        if (!processPaths.includes(path)) {
+        if (!seenPaths.has(path)) {
           processPaths.push(path);
+          seenPaths.add(path);
         }
       }
     }
