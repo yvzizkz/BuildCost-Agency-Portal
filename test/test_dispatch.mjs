@@ -76,6 +76,36 @@ test("social max is clamped to [1,3]", () => {
   assert.equal(buildDispatch(TENANT, "requestGeneration", { producer: "social", max: "garbage" }).exec.argv.at(-1), "1");
 });
 
+test("social with project + media targets one draft with a per-format slot", () => {
+  const r = buildDispatch(TENANT, "requestGeneration",
+    { producer: "social", project: "paradise-valley-whole-home", media: "collage:before-after" });
+  assert.ok(r.ok);
+  assert.deepEqual(r.exec.argv,
+    [STUDIO, "--brand", "saddlewood", "--mode", "draft",
+     "--project", "paradise-valley-whole-home", "--media", "collage:before-after", "--slot", "before-after"]);
+});
+
+test("social with media but no project still targets one draft (no --max)", () => {
+  const r = buildDispatch(TENANT, "requestGeneration", { producer: "social", media: "carousel" });
+  assert.ok(r.ok);
+  assert.deepEqual(r.exec.argv,
+    [STUDIO, "--brand", "saddlewood", "--mode", "draft", "--media", "carousel", "--slot", "carousel"]);
+});
+
+test("social rejects a media value outside the studio vocabulary (injection guard)", () => {
+  for (const bad of ["links", "single; rm -rf /", "--mode=links", "collage:evil", "send", "activate", "card"]) {
+    const r = buildDispatch(TENANT, "requestGeneration", { producer: "social", media: bad });
+    assert.equal(r.ok, false, `should reject media ${bad}`);
+  }
+});
+
+test("social rejects a non-slug project (no injection)", () => {
+  for (const bad of ["--premium", "a; ls", "../x", "Foo Bar"]) {
+    const r = buildDispatch(TENANT, "requestGeneration", { producer: "social", project: bad });
+    assert.equal(r.ok, false, `should reject project ${bad}`);
+  }
+});
+
 // ---- requestGeneration: reel ------------------------------------------------
 test("reel minimal is draft-only", () => {
   const r = buildDispatch(TENANT, "requestGeneration", { producer: "reel" });
@@ -128,6 +158,7 @@ test("NO valid dispatch can emit a send/publish/spend path", () => {
     ["approve", { queueId: "saddlewood-x" }],
     ["reject", { queueId: "saddlewood-x", notes: "n" }],
     ["requestGeneration", { producer: "social", max: 3 }],
+    ["requestGeneration", { producer: "social", project: "great-room-remodel", media: "collage:process-journey" }],
     ["requestGeneration", { producer: "reel", project: "great-room-remodel", premium: true }],
   ];
   const forbidden = ["activate", "--confirm", "--i-understand-this-spends", "meta_ads.py", "meta-ads", "--yes", "links", "send"];

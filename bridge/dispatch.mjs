@@ -40,6 +40,16 @@ const NOTES_MAX = 500;
 const GENERATORS = new Set(["social", "reel"]);
 const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration"]);
 
+// The ONLY `--media` values the portal may request — the studio vocabulary, exactly.
+// A specific format => exactly one draft (studio's `--slot` forces 1 post + a stable id).
+// `card` is intentionally excluded: studio requires `--card-text`, which the portal flow
+// does not collect, so a card request would always fail — reject it cleanly at the boundary.
+const SOCIAL_MEDIA = new Set([
+  "single", "vision", "carousel",
+  "collage:before-after", "collage:grid-2x2", "collage:process-journey",
+  "collage:feature-trio", "collage:reveal",
+]);
+
 function fail(error) {
   return { ok: false, error };
 }
@@ -124,15 +134,27 @@ export function buildDispatch(tenant, type, payload = {}) {
   if (!GENERATORS.has(producer)) return fail(`unknown producer: ${producer || "(none)"}`);
 
   if (producer === "social") {
-    const max = clampInt(payload.max, 1, 3, 1);
+    const argv = [abs(SCRIPTS.studio), "--brand", slug, "--mode", "draft"];
+    // Optional: ground the run on a SPECIFIC reference project (a submission's project).
+    if (payload.project != null && payload.project !== "") {
+      if (!SLUG_ID_RE.test(String(payload.project))) return fail("invalid project id");
+      argv.push("--project", String(payload.project));
+    }
+    // Optional: a SPECIFIC format => one draft with a per-format slot. Without media we keep
+    // the original behavior (`--max N` over the brief's pillars).
+    if (payload.media != null && payload.media !== "") {
+      const media = String(payload.media);
+      if (!SOCIAL_MEDIA.has(media)) return fail(`invalid media: ${media}`);
+      const slot = media.includes(":") ? media.split(":")[1] : media;
+      if (!SLUG_ID_RE.test(slot)) return fail("invalid media slot");
+      argv.push("--media", media, "--slot", slot);
+    } else {
+      const max = clampInt(payload.max, 1, 3, 1);
+      argv.push("--max", String(max));
+    }
     return {
       ok: true,
-      exec: {
-        ...base,
-        label: `gen:social:${slug}`,
-        argv: [abs(SCRIPTS.studio), "--brand", slug, "--mode", "draft", "--max", String(max)],
-        parse: parseOk,
-      },
+      exec: { ...base, label: `gen:social:${slug}`, argv, parse: parseOk },
     };
   }
 

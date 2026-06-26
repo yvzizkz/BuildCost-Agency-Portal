@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QueueItem, Draft } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
-import { approve, reject } from '@/lib/commands';
+import { approve, reject, requestGeneration } from '@/lib/commands';
 import MediaPreview from './MediaPreview';
 
 interface QueueCardProps {
@@ -13,6 +13,19 @@ interface QueueCardProps {
   uid: string;
 }
 
+// The mockup formats an owner can fan out for a submission's project. Values MUST match the
+// studio `--media` vocabulary allow-listed in bridge/dispatch.mjs (SOCIAL_MEDIA).
+const MOCKUP_FORMATS: { value: string; label: string }[] = [
+  { value: 'single', label: 'Single image' },
+  { value: 'collage:before-after', label: 'Before / After' },
+  { value: 'collage:process-journey', label: 'Process journey' },
+  { value: 'collage:feature-trio', label: 'Feature trio' },
+  { value: 'collage:grid-2x2', label: '2×2 grid' },
+  { value: 'collage:reveal', label: 'Reveal' },
+  { value: 'carousel', label: 'Carousel' },
+  { value: 'vision', label: 'Concept render' },
+];
+
 export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
@@ -21,6 +34,13 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [selectedFormats, setSelectedFormats] = useState<string[]>([
+    'single',
+    'collage:before-after',
+    'carousel',
+  ]);
+  const [generating, setGenerating] = useState(false);
+  const [genMsg, setGenMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (item.draftId) {
@@ -76,6 +96,38 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
     }
   };
 
+  const toggleFormat = (value: string) => {
+    setSelectedFormats((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    );
+  };
+
+  const handleGenerateMockups = async () => {
+    if (generating || !item.projectId || selectedFormats.length === 0) return;
+    setGenerating(true);
+    setError(null);
+    setGenMsg(null);
+    try {
+      // One command per format — each becomes its own draft + review card (the bridge maps
+      // it to studio --project <id> --media <fmt> --slot <fmt>, draft-only).
+      for (const media of selectedFormats) {
+        await requestGeneration(agencyId, brandId, uid, 'social', {
+          project: item.projectId,
+          media,
+        });
+      }
+      setGenMsg(
+        `Queued ${selectedFormats.length} mockup${selectedFormats.length > 1 ? 's' : ''} — drafts will appear here shortly.`
+      );
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to queue mockups.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const canGenerateMockups = item.type === 'intake' && !!item.projectId;
   const isActive = item.status !== 'approved' && item.status !== 'rejected';
 
   return (
@@ -89,6 +141,11 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
           <span className={`status-badge status-${item.status || 'pending'}`}>
             {(item.status || 'pending').toUpperCase()}
           </span>
+          {item.ghlStatus && (
+            <span className="status-badge ghl-draft" title="Pushed to the GHL Social Planner as a draft">
+              ✓ GHL {item.ghlStatus}
+            </span>
+          )}
         </div>
       </div>
 
@@ -101,6 +158,35 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
           </p>
         )}
       </div>
+
+      {canGenerateMockups && (
+        <div className="queue-card-generate">
+          <p className="generate-title"><strong>Generate mockups</strong> for this submission</p>
+          <div className="generate-formats">
+            {MOCKUP_FORMATS.map((f) => (
+              <label key={f.value} className="generate-format">
+                <input
+                  type="checkbox"
+                  checked={selectedFormats.includes(f.value)}
+                  onChange={() => toggleFormat(f.value)}
+                  disabled={generating}
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+          <button
+            className="btn-generate"
+            disabled={generating || selectedFormats.length === 0}
+            onClick={handleGenerateMockups}
+          >
+            {generating
+              ? 'Queueing…'
+              : `Generate ${selectedFormats.length} mockup${selectedFormats.length === 1 ? '' : 's'}`}
+          </button>
+          {genMsg && <div className="success-banner">{genMsg}</div>}
+        </div>
+      )}
 
       {loadingDraft && (
         <div className="draft-loading">
