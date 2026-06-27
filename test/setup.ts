@@ -39,6 +39,7 @@ vi.mock('firebase/firestore', () => ({
 vi.mock('firebase/storage', () => ({
   getStorage: vi.fn(() => ({})),
   ref: vi.fn((s, path) => ({ path })),
+  getDownloadURL: vi.fn(() => Promise.resolve('https://example.test/media.jpg')),
   uploadBytes: vi.fn(() => Promise.resolve()),
   // Resumable task: immediately reports full progress then completes.
   uploadBytesResumable: vi.fn((storageRef, file) => ({

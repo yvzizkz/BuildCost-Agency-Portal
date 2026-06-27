@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { QueueItem, Draft } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
 import { approve, reject, requestGeneration } from '@/lib/commands';
-import MediaPreview from './MediaPreview';
+import SocialPreview from './SocialPreview';
 import { friendlyError } from '@/lib/utils';
 
 // Plain-language status labels for non-technical owners. The CSS class still keys
@@ -218,30 +218,26 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
 
       {draft && (
         <div className="queue-card-draft">
-          {draft.assets && draft.assets.length > 0 && (
-            <div className="draft-assets-grid">
-              {draft.assets.map((asset, index) => (
-                <MediaPreview key={index} asset={asset} />
-              ))}
-            </div>
-          )}
-
-          {draft.copy && (
-            <div className="draft-copy-container">
-              {draft.copy.body && <p className="draft-copy-body">{draft.copy.body}</p>}
-              {draft.copy.hashtags && (
-                <p className="draft-copy-hashtags">
-                  {Array.isArray(draft.copy.hashtags)
-                    ? draft.copy.hashtags.join(' ')
-                    : draft.copy.hashtags}
-                </p>
-              )}
-              {draft.copy.cta && (
-                <div className="draft-copy-cta">
-                  <strong>Call to Action:</strong> {draft.copy.cta}
-                </div>
-              )}
-            </div>
+          {draft.assets && draft.assets.length > 0 ? (
+            <SocialPreview item={item} draft={draft} brandName={item.business} />
+          ) : (
+            draft.copy && (
+              <div className="draft-copy-container">
+                {draft.copy.body && <p className="draft-copy-body">{draft.copy.body}</p>}
+                {draft.copy.hashtags && (
+                  <p className="draft-copy-hashtags">
+                    {Array.isArray(draft.copy.hashtags)
+                      ? draft.copy.hashtags.join(' ')
+                      : draft.copy.hashtags}
+                  </p>
+                )}
+                {draft.copy.cta && (
+                  <div className="draft-copy-cta">
+                    <strong>Call to Action:</strong> {draft.copy.cta}
+                  </div>
+                )}
+              </div>
+            )
           )}
 
           <div className="draft-qa-badges">
