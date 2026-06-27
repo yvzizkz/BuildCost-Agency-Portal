@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { BrandDoc, QueueItem } from '@/lib/types';
+import { BrandDoc, QueueItem, TriageReport } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { subscribeToQueue } from '@/lib/queue';
+import { subscribeToQueue, subscribeToTriageReports } from '@/lib/queue';
 import { requestGeneration } from '@/lib/commands';
 import BrandPicker from '@/components/BrandPicker';
 import QueueCard from '@/components/QueueCard';
@@ -17,6 +17,7 @@ export default function HomePage() {
   const [brands, setBrands] = useState<BrandDoc[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [triageReports, setTriageReports] = useState<Record<string, TriageReport>>({});
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingQueue, setLoadingQueue] = useState(false);
   
@@ -58,7 +59,7 @@ export default function HomePage() {
   useEffect(() => {
     if (profile && selectedBrandId) {
       setLoadingQueue(true);
-      const unsubscribe = subscribeToQueue(
+      const unsubscribeQueue = subscribeToQueue(
         profile.agencyId,
         selectedBrandId,
         (items) => {
@@ -71,7 +72,20 @@ export default function HomePage() {
           setLoadingQueue(false);
         }
       );
-      return () => unsubscribe();
+      const unsubscribeTriage = subscribeToTriageReports(
+        profile.agencyId,
+        selectedBrandId,
+        (reports) => {
+          setTriageReports(reports);
+        },
+        (err) => {
+          console.error('Triage reports subscription error:', err);
+        }
+      );
+      return () => {
+        unsubscribeQueue();
+        unsubscribeTriage();
+      };
     } else {
       setQueueItems([]);
     }
@@ -217,6 +231,7 @@ export default function HomePage() {
                   <QueueCard
                     key={item.queueId}
                     item={item}
+                    triageReport={triageReports[item.queueId]}
                     agencyId={profile?.agencyId || ''}
                     brandId={selectedBrandId || ''}
                     uid={user?.uid || ''}

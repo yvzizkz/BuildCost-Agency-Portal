@@ -105,31 +105,38 @@ export interface IntentBrief {
 }
 
 export interface TriageAssetScore {
-  file: string;            // basename only
-  kind: 'image' | 'video' | string;
   quality: number | null;
   relevance: number | null;
   messaging: number | null;
   overall: number | null;
-  verdict: 'use' | 'enhance' | 'skip' | string;
+  verdict: 'use' | 'enhance' | 'skip';
   captionAngle: string;
   notes: string;
   defects: string[];
-  enhanced: string | null; // basename of an enhanced still, when present
+}
+
+export interface TriageAsset {
+  file: string;
+  kind: 'image' | 'video';
+  scores: TriageAssetScore;
+  enhanced?: string | null;
+  enhanceNote?: string;
+  derivedStills?: string[];
+  stillScores?: (TriageAssetScore & { still: string; enhanced?: string | null })[];
 }
 
 // agencies/{a}/brands/{b}/triageReports/{submissionId}
 export interface TriageReport {
+  schemaVersion: number;
+  brand: string;
   submissionId: string;
-  brand: string | null;
-  triagedAt: string | null;
+  triagedAt: string;
   brief: IntentBrief;
-  research: { briefId?: string; objective?: string; contentPillars?: string[] } | null;
-  template: { key?: string; cadence?: string; routesReady?: string[]; routesPhase2?: string[] } | null;
-  assets: TriageAssetScore[];
+  research: { briefId?: string; objective?: string; contentPillars?: string[] };
+  template: { key: string; cadence?: string; routesReady: string[]; routesPhase2: string[] };
+  assets: TriageAsset[];
   recommendedBundle: { routesReady: string[]; routesPhase2: string[]; topAssets: string[] };
-  summary: { assetCount: number; use: number; enhance: number; skip: number };
-  humanGate: string | null;
+  humanGate: string;
   mirroredAt?: Timestamp | string | number;
 }
 

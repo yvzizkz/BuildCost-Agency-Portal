@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { QueueItem, Draft } from '@/lib/types';
+import { QueueItem, Draft, TriageReport } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
 import { approve, reject, requestGeneration, editCaption } from '@/lib/commands';
 import SocialPreview from './SocialPreview';
+import TriageResults from './TriageResults';
 import { friendlyError } from '@/lib/utils';
 
 // Plain-language status labels for non-technical owners. The CSS class still keys
@@ -27,6 +28,7 @@ function statusLabel(status?: string): string {
 
 interface QueueCardProps {
   item: QueueItem;
+  triageReport?: TriageReport;
   agencyId: string;
   brandId: string;
   uid: string;
@@ -45,7 +47,7 @@ const MOCKUP_FORMATS: { value: string; label: string }[] = [
   { value: 'vision', label: 'Concept render' },
 ];
 
-export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardProps) {
+export default function QueueCard({ item, triageReport, agencyId, brandId, uid }: QueueCardProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -65,6 +67,7 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
   const [editHashtags, setEditHashtags] = useState('');
   const [editCta, setEditCta] = useState('');
   const [editMsg, setEditMsg] = useState<string | null>(null);
+  const [showTriage, setShowTriage] = useState(false);
 
   useEffect(() => {
     if (item.draftId) {
@@ -262,6 +265,19 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
         <div className="draft-loading">
           <div className="mini-spinner"></div>
           <span>Loading draft preview...</span>
+        </div>
+      )}
+
+      {triageReport && (
+        <div className="triage-report-container" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <button
+            type="button"
+            className="btn-triage-toggle"
+            onClick={() => setShowTriage(!showTriage)}
+          >
+            {showTriage ? 'Hide Triage Report' : 'View Triage Report'}
+          </button>
+          {showTriage && <TriageResults report={triageReport} />}
         </div>
       )}
 
