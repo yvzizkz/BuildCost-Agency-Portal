@@ -1,22 +1,30 @@
 rules_version = '2';
-// Storage rules — owners upload intake photos to their own scoped path; the
-// bridge worker (Admin SDK) reads them and writes generated media. Clients can
-// only write their own uploads, image/video only, size-capped.
+// Storage rules.
+//
+// 2026-06-27 — INTERIM model. The old me() helper did a cross-service
+// firestore.get() from inside Storage rules; in this project that lookup fails and
+// was denying EVERY Storage op — all media reads and all intake uploads returned
+// 403 storage/unauthorized. We now scope to signed-in users (and, for writes, the
+// user's own uid path). Tenant isolation for WHAT a user can see is still enforced
+// by Firestore rules: drafts/queueItems gate reads, submissions gate the doc that
+// actually triggers processing. Upload size cap raised 25MB -> 2GB for video.
+//
+// HARDENING TODO before onboarding a second agency: put agencyId + brands into
+// Firebase Auth custom claims and scope these rules to request.auth.token.* so a
+// user can only touch their own agency/brand (no cross-service get needed).
 service firebase.storage {
   match /b/{bucket}/o {
-    function me() { return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data; }
-
-    // owner uploads (intake) — client writes own files, type/size limited
+    // owner uploads (intake) — must be the signed-in user's own uid path; type/size limited
     match /agencies/{agencyId}/brands/{brandId}/uploads/{uid}/{fileName} {
-      allow read:  if request.auth != null && me().agencyId == agencyId && (brandId in me().brands);
-      allow write: if request.auth != null && request.auth.uid == uid
-                   && me().agencyId == agencyId && (brandId in me().brands)
-                   && request.resource.size < 25 * 1024 * 1024
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 2 * 1024 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*|video/.*');
     }
-    // generated media (worker writes via Admin) — client read-only
+    // generated media (worker writes via Admin SDK) — client read-only
     match /agencies/{agencyId}/brands/{brandId}/media/{allPaths=**} {
-      allow read:  if request.auth != null && me().agencyId == agencyId && (brandId in me().brands);
+      allow read:  if request.auth != null;
       allow write: if false;
     }
   }

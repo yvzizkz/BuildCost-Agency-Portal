@@ -10,7 +10,7 @@ import { requestGeneration } from '@/lib/commands';
 import BrandPicker from '@/components/BrandPicker';
 import QueueCard from '@/components/QueueCard';
 import Link from 'next/link';
-import { getErrorMessage } from '@/lib/utils';
+import { friendlyError } from '@/lib/utils';
 
 export default function HomePage() {
   const { user, profile, signOut } = useAuth();
@@ -23,6 +23,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState<'review' | 'approved'>('review');
 
   useEffect(() => {
     if (profile && profile.brands && profile.brands.length > 0) {
@@ -86,11 +87,20 @@ export default function HomePage() {
       setGenSuccess(`Requested generation for "${producer === 'social' ? 'Social Post' : 'Reel Video'}"`);
     } catch (err: unknown) {
       console.error(err);
-      setError(getErrorMessage(err));
+      setError(friendlyError(err));
     } finally {
       setGenerating(false);
     }
   };
+
+  // Split the feed: the review tab shows only what needs the owner; approved posts
+  // move to their own tab (history + schedule + GHL status). Rejected items have
+  // been sent back for revision and drop out of both lists.
+  const reviewItems = queueItems.filter(
+    (i) => i.status !== 'approved' && i.status !== 'rejected'
+  );
+  const approvedItems = queueItems.filter((i) => i.status === 'approved');
+  const visibleItems = activeTab === 'review' ? reviewItems : approvedItems;
 
   return (
     <div className="app-container">
@@ -163,23 +173,47 @@ export default function HomePage() {
 
             {error && <div className="error-banner" style={{ marginBottom: '1.5rem' }}>{error}</div>}
 
-            <h2 style={{ marginBottom: '1.5rem', fontWeight: 700, fontSize: '1.5rem' }}>
-              Approval Queue
-            </h2>
+            <div className="queue-tabs" role="tablist">
+              <button
+                role="tab"
+                aria-selected={activeTab === 'review'}
+                className={`queue-tab ${activeTab === 'review' ? 'active' : ''}`}
+                onClick={() => setActiveTab('review')}
+              >
+                Needs Review<span className="tab-count">{reviewItems.length}</span>
+              </button>
+              <button
+                role="tab"
+                aria-selected={activeTab === 'approved'}
+                className={`queue-tab ${activeTab === 'approved' ? 'active' : ''}`}
+                onClick={() => setActiveTab('approved')}
+              >
+                Approved &amp; Scheduled<span className="tab-count">{approvedItems.length}</span>
+              </button>
+            </div>
 
             {loadingQueue ? (
               <div style={{ textAlign: 'center', padding: '3rem' }}>
                 <div className="spinner"></div>
-                <p>Loading brand queue items...</p>
+                <p>Loading queue…</p>
               </div>
-            ) : queueItems.length === 0 ? (
+            ) : visibleItems.length === 0 ? (
               <div className="empty-state">
-                <h3>No Active Queue Items</h3>
-                <p>There are no items currently awaiting review for this brand.</p>
+                {activeTab === 'review' ? (
+                  <>
+                    <h3>You&apos;re all caught up</h3>
+                    <p>Nothing is waiting for your review right now.</p>
+                  </>
+                ) : (
+                  <>
+                    <h3>No approved posts yet</h3>
+                    <p>Posts you approve will move here, with their schedule date and GoHighLevel status.</p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="feed-container">
-                {queueItems.map((item) => (
+                {visibleItems.map((item) => (
                   <QueueCard
                     key={item.queueId}
                     item={item}

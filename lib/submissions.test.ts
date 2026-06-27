@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { uploadAndSubmit } from './submissions';
-import { mockSetDoc, mockUploadBytes } from '../test/firebaseMock';
+import { mockSetDoc, mockUploadBytesResumable } from '../test/firebaseMock';
 
 describe('lib/submissions.ts', () => {
   beforeEach(() => {
@@ -22,21 +22,21 @@ describe('lib/submissions.ts', () => {
       processIndexes: []
     });
 
-    expect(mockUploadBytes).toHaveBeenCalled();
-    const call = mockUploadBytes.mock.calls[0];
+    expect(mockUploadBytesResumable).toHaveBeenCalled();
+    const call = mockUploadBytesResumable.mock.calls[0];
     // Path should contain sanitized name: malicious.jpg
     expect((call[0] as any).path).toMatch(/malicious.jpg$/);
     expect((call[0] as any).path).not.toContain('..');
   });
 
-  it('should reject files over 25MB', async () => {
-    const file = mockFile('large.jpg', 26 * 1024 * 1024, 'image/jpeg');
+  it('should reject files over the 2GB limit', async () => {
+    const file = mockFile('huge.mp4', 3 * 1024 * 1024 * 1024, 'video/mp4');
     await expect(uploadAndSubmit('agency1', 'brand1', 'user1', {
       title: 'Test',
       files: [file],
       heroIndex: 0,
       processIndexes: []
-    })).rejects.toThrow(/exceeds the 25MB limit/);
+    })).rejects.toThrow(/larger than the 2 GB limit/);
   });
 
   it('should reject non-image/video files', async () => {

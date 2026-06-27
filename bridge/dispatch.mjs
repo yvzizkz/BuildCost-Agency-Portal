@@ -38,7 +38,12 @@ const SLUG_RE = /^[a-z][a-z0-9-]{1,30}$/;
 const NOTES_MAX = 500;
 
 const GENERATORS = new Set(["social", "reel"]);
-const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration"]);
+const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration", "editCaption"]);
+
+// Caption editing limits. Body keeps line breaks; hashtags/CTA are single-line.
+const CAPTION_MAX = 3000;
+const HASHTAGS_MAX = 600;
+const CTA_MAX = 200;
 
 // The ONLY `--media` values the portal may request — the studio vocabulary, exactly.
 // A specific format => exactly one draft (studio's `--slot` forces 1 post + a stable id).
@@ -61,6 +66,42 @@ function cleanNotes(s) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, NOTES_MAX);
+}
+
+/** Caption body: strip control chars EXCEPT newline/tab, collapse spaces, cap blank lines + length. */
+function cleanCaption(s) {
+  return String(s == null ? "" : s)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, CAPTION_MAX);
+}
+
+/** Single-line clean (hashtags, CTA) — no newlines. */
+function cleanLine(s, max) {
+  return String(s == null ? "" : s)
+    .replace(/[\x00-\x1f\x7f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+/**
+ * Validate + normalize an owner caption edit for the engine. Returns the cleaned
+ * {body, hashtags[], cta} (hashtags as an ARRAY — the engine draft's shape) or null
+ * if nothing meaningful was supplied. This is the boundary validator for editCaption
+ * payloads, mirroring cleanNotes' discipline for reject.
+ */
+export function cleanEditCopy(copy) {
+  const c = copy && typeof copy === "object" ? copy : {};
+  const body = cleanCaption(c.body);
+  const hashtagsStr = cleanLine(c.hashtags, HASHTAGS_MAX);
+  const hashtags = hashtagsStr ? hashtagsStr.split(/\s+/).filter(Boolean) : [];
+  const cta = cleanLine(c.cta, CTA_MAX);
+  if (!body && hashtags.length === 0 && !cta) return null;
+  return { body, hashtags, cta };
 }
 
 function clampInt(v, lo, hi, dflt) {
@@ -124,6 +165,24 @@ export function buildDispatch(tenant, type, payload = {}) {
         ...base,
         label: `reject:${slug}:${qid}`,
         argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "reject", "--id", qid, "--notes", notes],
+        parse: parseOk,
+      },
+    };
+  }
+
+  if (type === "editCaption") {
+    const qid = String(payload.queueId || "");
+    if (!QUEUE_ID_RE.test(qid)) return fail("editCaption requires a valid queueId");
+    // The bridge has already validated+written the cleaned copy to this temp JSON file
+    // (dispatch is pure/no-fs); we only thread its path. Engine stays draft-only.
+    const copyFile = String(payload.copyFile || "");
+    if (!copyFile) return fail("editCaption requires a copyFile path (internal)");
+    return {
+      ok: true,
+      exec: {
+        ...base,
+        label: `editCaption:${slug}:${qid}`,
+        argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "edit-caption", "--id", qid, "--copy-file", copyFile],
         parse: parseOk,
       },
     };

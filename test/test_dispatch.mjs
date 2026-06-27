@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDispatch } from "../bridge/dispatch.mjs";
+import { buildDispatch, cleanEditCopy } from "../bridge/dispatch.mjs";
 
 const TENANT = { repoRoot: "/repo", env: "/repo/.env", slug: "saddlewood" };
 const REPO = "/repo";
@@ -62,6 +62,48 @@ test("reject notes are length-capped", () => {
   const r = buildDispatch(TENANT, "reject", { queueId: "saddlewood-x", notes: "a".repeat(900) });
   assert.ok(r.ok);
   assert.equal(r.exec.argv.at(-1).length, 500);
+});
+
+// ---- editCaption ------------------------------------------------------------
+test("editCaption builds argv with --mode edit-caption + --copy-file path", () => {
+  const r = buildDispatch(TENANT, "editCaption",
+    { queueId: "saddlewood-2026-W26-post-1", copyFile: "/tmp/portal-editcopy-abc.json" });
+  assert.ok(r.ok);
+  assert.deepEqual(r.exec.argv,
+    [APPROVAL, "--brand", "saddlewood", "--mode", "edit-caption", "--id", "saddlewood-2026-W26-post-1",
+     "--copy-file", "/tmp/portal-editcopy-abc.json"]);
+});
+
+test("editCaption with an injection-y queueId is rejected", () => {
+  for (const bad of ["../../etc/passwd", "a b", "$(whoami)", ""]) {
+    const r = buildDispatch(TENANT, "editCaption", { queueId: bad, copyFile: "/tmp/x.json" });
+    assert.equal(r.ok, false, `should reject ${bad}`);
+  }
+});
+
+test("editCaption without a copyFile path is rejected (internal contract)", () => {
+  const r = buildDispatch(TENANT, "editCaption", { queueId: "saddlewood-x" });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /copyFile/i);
+});
+
+test("cleanEditCopy normalizes body (keeps blank lines), hashtags->array, cta", () => {
+  const c = cleanEditCopy({ body: "Line one\n\n\n\nLine two   with   spaces", hashtags: "#a   #b\t#c", cta: "  Book now  " });
+  assert.equal(c.body, "Line one\n\nLine two with spaces");
+  assert.deepEqual(c.hashtags, ["#a", "#b", "#c"]);
+  assert.equal(c.cta, "Book now");
+});
+
+test("cleanEditCopy returns null when nothing meaningful is supplied", () => {
+  assert.equal(cleanEditCopy({ body: "   ", hashtags: "  ", cta: "" }), null);
+  assert.equal(cleanEditCopy({}), null);
+  assert.equal(cleanEditCopy(null), null);
+});
+
+test("cleanEditCopy strips control chars and caps body length", () => {
+  const c = cleanEditCopy({ body: "a".repeat(4000) + "\x00\x07bad", hashtags: "#x", cta: "" });
+  assert.ok(c.body.length <= 3000);
+  assert.ok(!c.body.includes("\x00"));
 });
 
 // ---- requestGeneration: social ---------------------------------------------
@@ -160,6 +202,7 @@ test("NO valid dispatch can emit a send/publish/spend path", () => {
     ["requestGeneration", { producer: "social", max: 3 }],
     ["requestGeneration", { producer: "social", project: "great-room-remodel", media: "collage:process-journey" }],
     ["requestGeneration", { producer: "reel", project: "great-room-remodel", premium: true }],
+    ["editCaption", { queueId: "saddlewood-x", copyFile: "/tmp/copy.json" }],
   ];
   const forbidden = ["activate", "--confirm", "--i-understand-this-spends", "meta_ads.py", "meta-ads", "--yes", "links", "send"];
   for (const [type, payload] of valid) {
@@ -167,7 +210,12 @@ test("NO valid dispatch can emit a send/publish/spend path", () => {
     assert.ok(r.ok);
     const joined = r.exec.argv.join(" ");
     for (const f of forbidden) assert.ok(!joined.includes(f), `${type} argv must not contain "${f}": ${joined}`);
-    // every template is draft-only or a read/approve op — never a producer publish mode
-    if (joined.includes("--mode")) assert.ok(joined.includes("--mode draft") || joined.includes("--mode approve") || joined.includes("--mode reject"));
+    // every template is draft-only or a read/approve/edit op — never a producer publish mode
+    if (joined.includes("--mode")) {
+      assert.ok(
+        joined.includes("--mode draft") || joined.includes("--mode approve") ||
+        joined.includes("--mode reject") || joined.includes("--mode edit-caption")
+      );
+    }
   }
 });

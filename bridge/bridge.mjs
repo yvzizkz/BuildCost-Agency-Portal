@@ -31,7 +31,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import admin from "firebase-admin";
-import { buildDispatch } from "./dispatch.mjs";
+import { buildDispatch, cleanEditCopy } from "./dispatch.mjs";
 import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror } from "./mirror.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -187,25 +187,45 @@ async function processCommand(ref, data) {
     await ref.update({ status: "error", error: `unknown tenant ${agencyId}/${brandId}` });
     return;
   }
-  const built = buildDispatch(tenant, data.type, data.payload || data);
-  if (!built.ok) {
-    await ref.update({ status: "error", error: built.error });
-    console.warn(`[cmd] ${tenant.slug}/${ref.id} rejected: ${built.error}`);
-    return;
+  // editCaption carries freeform owner copy. dispatch.mjs is pure (no fs), so we
+  // re-validate the copy at the boundary and write the cleaned {body,hashtags[],cta}
+  // to a temp JSON file, threading only its path into the argv. Cleaned up in finally.
+  let copyFile = null;
+  let payload = data.payload || data;
+  if (data.type === "editCaption") {
+    const cleaned = cleanEditCopy(data.copy);
+    if (!cleaned) {
+      await ref.update({ status: "error", error: "editCaption: empty caption" });
+      return;
+    }
+    copyFile = path.join(os.tmpdir(), `portal-editcopy-${ref.id}.json`);
+    fs.writeFileSync(copyFile, JSON.stringify(cleaned));
+    payload = { queueId: data.queueId, copyFile };
   }
-  const r = await runExec(built.exec);
-  if (r.code === 0) {
-    const result = built.exec.parse(r.stdout);
-    await ref.update({
-      status: "done",
-      processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      result,
-    });
-    console.log(`[cmd] ${built.exec.label} -> done`);
-  } else {
-    const msg = (r.stderr || "").slice(-800) || `exit ${r.code}${r.killed ? " (timeout)" : ""}`;
-    await ref.update({ status: "error", error: msg });
-    console.error(`[cmd] ${built.exec.label} FAILED: ${msg}`);
+
+  try {
+    const built = buildDispatch(tenant, data.type, payload);
+    if (!built.ok) {
+      await ref.update({ status: "error", error: built.error });
+      console.warn(`[cmd] ${tenant.slug}/${ref.id} rejected: ${built.error}`);
+      return;
+    }
+    const r = await runExec(built.exec);
+    if (r.code === 0) {
+      const result = built.exec.parse(r.stdout);
+      await ref.update({
+        status: "done",
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        result,
+      });
+      console.log(`[cmd] ${built.exec.label} -> done`);
+    } else {
+      const msg = (r.stderr || "").slice(-800) || `exit ${r.code}${r.killed ? " (timeout)" : ""}`;
+      await ref.update({ status: "error", error: msg });
+      console.error(`[cmd] ${built.exec.label} FAILED: ${msg}`);
+    }
+  } finally {
+    if (copyFile) { try { fs.unlinkSync(copyFile); } catch { /* ignore */ } }
   }
 }
 

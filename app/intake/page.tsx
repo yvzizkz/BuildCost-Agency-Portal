@@ -5,9 +5,9 @@ import { useAuth } from '@/lib/auth';
 import { BrandDoc } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { uploadAndSubmit } from '@/lib/submissions';
+import { uploadAndSubmit, MAX_UPLOAD_BYTES } from '@/lib/submissions';
 import Link from 'next/link';
-import { getErrorMessage } from '@/lib/utils';
+import { friendlyError, formatBytes } from '@/lib/utils';
 
 export default function IntakePage() {
   const { user, profile, signOut } = useAuth();
@@ -23,6 +23,7 @@ export default function IntakePage() {
   
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -61,12 +62,12 @@ export default function IntakePage() {
       const selectedFiles = Array.from(e.target.files);
       
       for (const file of selectedFiles) {
-        if (file.size >= 25 * 1024 * 1024) {
-          setError(`File ${file.name} is too large. Max size is 25MB.`);
+        if (file.size > MAX_UPLOAD_BYTES) {
+          setError(`"${file.name}" is larger than the 2 GB limit.`);
           return;
         }
         if (!file.type.match(/^image\//) && !file.type.match(/^video\//)) {
-          setError(`File ${file.name} is not an image or video.`);
+          setError(`"${file.name}" is not an image or video.`);
           return;
         }
       }
@@ -123,20 +124,27 @@ export default function IntakePage() {
     }
 
     setSubmitting(true);
+    setProgress(0);
     setError(null);
     setSuccess(null);
 
     try {
-      await uploadAndSubmit(profile.agencyId, selectedBrandId, user.uid, {
-        title: title.trim(),
-        neighborhood: neighborhood.trim() || undefined,
-        note: note.trim() || undefined,
-        files,
-        heroIndex,
-        processIndexes: Array.from(processIndexes),
-      });
+      await uploadAndSubmit(
+        profile.agencyId,
+        selectedBrandId,
+        user.uid,
+        {
+          title: title.trim(),
+          neighborhood: neighborhood.trim() || undefined,
+          note: note.trim() || undefined,
+          files,
+          heroIndex,
+          processIndexes: Array.from(processIndexes),
+        },
+        setProgress
+      );
 
-      setSuccess('Media package uploaded and intake document created successfully.');
+      setSuccess('Media uploaded! Your photos are in — we\'ll start generating content shortly.');
       setTitle('');
       setNeighborhood('');
       setNote('');
@@ -145,7 +153,7 @@ export default function IntakePage() {
       setProcessIndexes(new Set());
     } catch (err: unknown) {
       console.error(err);
-      setError(getErrorMessage(err));
+      setError(friendlyError(err));
     } finally {
       setSubmitting(false);
     }
@@ -259,14 +267,14 @@ export default function IntakePage() {
                     style={{ display: 'none' }}
                   />
                   <div className="file-dropzone-text">Click to browse image or video files</div>
-                  <div className="file-dropzone-sub">Images and Videos up to 25MB are supported</div>
+                  <div className="file-dropzone-sub">Photos and videos up to 2 GB are supported</div>
                 </label>
 
                 {files.length > 0 && (
                   <div className="selected-files-list">
                     {files.map((file, idx) => (
                       <div key={idx} className="selected-file-item">
-                        <span className="file-item-name">{file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                        <span className="file-item-name">{file.name} ({formatBytes(file.size)})</span>
                         <div className="file-item-controls">
                           <label className="file-control-label">
                             <input
@@ -312,12 +320,19 @@ export default function IntakePage() {
                 )}
               </div>
 
+              {submitting && (
+                <div className="upload-progress" aria-label={`Upload ${progress}% complete`}>
+                  <div className="upload-progress-bar" style={{ width: `${progress}%` }} />
+                  <span className="upload-progress-label">{progress}% uploaded</span>
+                </div>
+              )}
+
               <button
                 type="submit"
                 className="btn-primary"
                 disabled={submitting || files.length === 0}
               >
-                {submitting ? 'Uploading and Submitting...' : 'Submit Media Package'}
+                {submitting ? `Uploading… ${progress}%` : 'Submit Media Package'}
               </button>
             </form>
           </div>

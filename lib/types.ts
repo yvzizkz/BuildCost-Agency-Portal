@@ -83,7 +83,12 @@ export interface Submission {
   createdAtMs: number;
 }
 
-export type CommandType = 'approve' | 'reject' | 'submitContent' | 'requestGeneration';
+export type CommandType =
+  | 'approve'
+  | 'reject'
+  | 'submitContent'
+  | 'requestGeneration'
+  | 'editCaption';
 
 export interface CommandDoc {
   id?: string;
@@ -92,6 +97,11 @@ export interface CommandDoc {
   requestedByUid: string;
   queueId?: string;
   notes?: string;
+  copy?: {
+    body?: string;
+    hashtags?: string;
+    cta?: string;
+  };
   payload?: {
     producer?: 'social' | 'reel' | string;
     [key: string]: unknown;

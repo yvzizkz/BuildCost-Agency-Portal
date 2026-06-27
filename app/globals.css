@@ -444,6 +444,265 @@ body {
   background-color: var(--color-error-bg);
   color: var(--color-error);
 }
+.status-badge.status-needs-human,
+.status-badge.status-awaiting-approval {
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+/* Queue tabs (Needs Review vs Approved & Scheduled) */
+.queue-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.queue-tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: var(--transition-smooth);
+}
+.queue-tab:hover {
+  color: var(--text-secondary);
+}
+.queue-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-primary);
+}
+.queue-tab .tab-count {
+  display: inline-block;
+  margin-left: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+}
+.queue-tab.active .tab-count {
+  background: hsla(210, 100%, 55%, 0.2);
+  color: var(--color-primary);
+}
+
+/* ============================================================
+   Social post preview — show a draft as it will actually post
+   ============================================================ */
+.social-preview {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+.sp-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+  justify-content: center;
+}
+.sp-pill {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+.sp-pill:hover { color: var(--text-primary); border-color: hsla(220, 15%, 40%, 0.9); }
+.sp-pill.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+.sp-stage { display: flex; justify-content: center; }
+
+/* Generic card shell + media frame */
+.sp-card {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.sp-frame {
+  position: relative;
+  width: 100%;
+  background: #000;
+  overflow: hidden;
+}
+.sp-media { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sp-frame-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.sp-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.sp-nav-prev { left: 8px; }
+.sp-nav-next { right: 8px; }
+.sp-count {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  font-size: 0.72rem; font-weight: 600;
+  padding: 0.12rem 0.5rem; border-radius: 999px;
+}
+.sp-dots {
+  position: absolute; bottom: 10px; left: 0; right: 0;
+  display: flex; gap: 5px; justify-content: center;
+}
+.sp-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.5); }
+.sp-dots span.on { background: #fff; }
+
+.sp-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 0.95rem;
+  background: linear-gradient(45deg, #f09433, #e6683c 30%, #dc2743 60%, #cc2366 80%, #bc1888);
+}
+.sp-more svg { display: block; }
+.sp-hashtags { color: #1d4ed8; }
+
+/* Instagram */
+.sp-ig { background: #fff; color: #111; }
+.sp-ig-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.75rem; }
+.sp-ig-head-name { font-weight: 600; font-size: 0.9rem; flex: 1; }
+.sp-ig-more { color: #111; display: flex; }
+.sp-ig-actions { display: flex; align-items: center; justify-content: space-between; padding: 0.55rem 0.7rem 0.2rem; color: #111; }
+.sp-ig-left { display: flex; gap: 0.85rem; }
+.sp-ig-left span, .sp-ig-save { display: flex; cursor: default; }
+.sp-ig-caption { padding: 0.2rem 0.8rem 0.9rem; font-size: 0.85rem; line-height: 1.45; color: #111; }
+.sp-ig-handle { font-weight: 600; }
+.sp-more { background: none; border: none; color: #6b7280; padding: 0 0 0 0.25rem; cursor: pointer; font-size: 0.85rem; }
+
+/* Facebook */
+.sp-fb { background: #fff; color: #111; }
+.sp-fb-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.8rem 0.4rem; }
+.sp-fb-name { font-weight: 700; font-size: 0.88rem; }
+.sp-fb-meta { font-size: 0.72rem; color: #65676b; }
+.sp-fb-text { padding: 0.2rem 0.8rem 0.6rem; font-size: 0.88rem; line-height: 1.45; color: #1c1e21; }
+.sp-fb-cta {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #f0f2f5; padding: 0.55rem 0.8rem; font-size: 0.85rem; color: #1c1e21;
+}
+.sp-fb-cta-btn { background: #e4e6eb; border: none; border-radius: 6px; padding: 0.4rem 0.8rem; font-weight: 600; cursor: pointer; }
+.sp-fb-actions { display: flex; justify-content: space-around; padding: 0.4rem 0; border-top: 1px solid #e4e6eb; color: #65676b; font-size: 0.82rem; font-weight: 600; }
+.sp-fb-actions span { display: flex; align-items: center; gap: 0.35rem; }
+
+/* Vertical: Reels / Story / TikTok */
+.sp-vert { background: #000; }
+.sp-vert-media { position: relative; }
+.sp-vert-media .sp-frame { background: #000; }
+.sp-vert-overlay {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 0.8rem 3.2rem 1rem 0.8rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+  color: #fff;
+}
+.sp-vert-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.sp-vert-handle { font-weight: 700; font-size: 0.85rem; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.sp-vert-follow { border: 1px solid #fff; border-radius: 6px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 600; }
+.sp-vert-caption { font-size: 0.82rem; line-height: 1.4; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.sp-vert-caption .sp-hashtags { color: #cfe0ff; }
+.sp-vert-caption .sp-more { color: #e5e7eb; }
+.sp-vert-rail {
+  position: absolute; right: 8px; bottom: 70px;
+  display: flex; flex-direction: column; gap: 1.1rem; color: #fff;
+}
+.sp-vert-rail span { display: flex; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
+.sp-story-bar { position: absolute; top: 8px; left: 8px; right: 8px; height: 3px; background: rgba(255,255,255,0.35); border-radius: 2px; }
+.sp-story-bar span { display: block; height: 100%; width: 45%; background: #fff; border-radius: 2px; }
+
+/* Google Business Profile */
+.sp-gbp { background: #fff; color: #202124; border: 1px solid #e0e0e0; }
+.sp-gbp-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.8rem; }
+.sp-gbp .sp-avatar { background: linear-gradient(45deg, #4285f4, #34a853); }
+.sp-gbp-name { font-weight: 600; font-size: 0.9rem; }
+.sp-gbp-meta { font-size: 0.74rem; color: #5f6368; }
+.sp-gbp-body { padding: 0.2rem 0.85rem 0.8rem; font-size: 0.87rem; line-height: 1.5; color: #3c4043; }
+.sp-gbp-cta { display: block; width: calc(100% - 1.6rem); margin: 0 0.8rem 0.9rem; background: #fff; color: #1a73e8; border: 1px solid #dadce0; border-radius: 6px; padding: 0.6rem; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
+
+/* Inline caption editor */
+.caption-edit { margin-top: 0.25rem; }
+.btn-edit-caption {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+.btn-edit-caption:hover { color: var(--text-primary); border-color: var(--color-primary); }
+.caption-edit-form { display: flex; flex-direction: column; gap: 0.4rem; }
+.caption-edit-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.caption-edit-textarea, .caption-edit-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.5;
+  padding: 0.6rem 0.75rem;
+  resize: vertical;
+}
+.caption-edit-textarea:focus, .caption-edit-input:focus { outline: none; border-color: var(--border-focus); }
+.caption-edit-actions { display: flex; gap: 0.6rem; margin-top: 0.4rem; }
+
+/* Intake upload progress bar */
+.upload-progress {
+  position: relative;
+  height: 30px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: 1rem;
+}
+.upload-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: var(--color-primary);
+  transition: width 0.2s ease;
+}
+.upload-progress-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
 .queue-card-body {
   display: flex;
