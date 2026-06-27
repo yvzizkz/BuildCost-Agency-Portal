@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { QueueItem, Draft, TriageReport } from '@/lib/types';
+import { QueueItem, Draft, TriageReport, Strategy } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
 import { approve, reject, requestGeneration, editCaption } from '@/lib/commands';
 import SocialPreview from './SocialPreview';
 import TriageResults from './TriageResults';
+import StrategyView from './StrategyView';
 import { friendlyError } from '@/lib/utils';
 
 // Plain-language status labels for non-technical owners. The CSS class still keys
@@ -29,6 +30,7 @@ function statusLabel(status?: string): string {
 interface QueueCardProps {
   item: QueueItem;
   triageReport?: TriageReport;
+  strategy?: Strategy;
   agencyId: string;
   brandId: string;
   uid: string;
@@ -52,6 +54,7 @@ const MOCKUP_FORMATS: { value: string; label: string }[] = [
 export default function QueueCard({
   item,
   triageReport,
+  strategy,
   agencyId,
   brandId,
   uid,
@@ -78,6 +81,7 @@ export default function QueueCard({
   const [editCta, setEditCta] = useState('');
   const [editMsg, setEditMsg] = useState<string | null>(null);
   const [showTriage, setShowTriage] = useState(false);
+  const [showStrategy, setShowStrategy] = useState(false);
 
   useEffect(() => {
     if (item.draftId) {
@@ -293,11 +297,30 @@ export default function QueueCard({
           <button
             type="button"
             className="btn-triage-toggle"
-            onClick={() => setShowTriage(!showTriage)}
+            onClick={() => {
+              setShowTriage(!showTriage);
+              if (!showTriage) setShowStrategy(false);
+            }}
           >
             {showTriage ? 'Hide Triage Report' : 'View Triage Report'}
           </button>
           {showTriage && <TriageResults report={triageReport} />}
+        </div>
+      )}
+
+      {strategy && (
+        <div className="strategy-container" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <button
+            type="button"
+            className="btn-triage-toggle"
+            onClick={() => {
+              setShowStrategy(!showStrategy);
+              if (!showStrategy) setShowTriage(false);
+            }}
+          >
+            {showStrategy ? 'Hide Content Strategy' : 'View Content Strategy'}
+          </button>
+          {showStrategy && <StrategyView strategy={strategy} />}
         </div>
       )}
 

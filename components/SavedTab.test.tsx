@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import HomePage from '../app/page';
 import { useAuth } from '@/lib/auth';
-import { subscribeToQueue, subscribeToTriageReports } from '@/lib/queue';
+import { subscribeToQueue, subscribeToTriageReports, subscribeToStrategies } from '@/lib/queue';
 import { getDoc } from 'firebase/firestore';
 
 // Mock dependencies
@@ -13,6 +13,7 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/queue', () => ({
   subscribeToQueue: vi.fn(),
   subscribeToTriageReports: vi.fn(() => vi.fn()),
+  subscribeToStrategies: vi.fn(() => vi.fn()),
   fetchDraft: vi.fn(() => Promise.resolve(null)),
 }));
 
