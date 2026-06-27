@@ -164,21 +164,39 @@ export function projectTriage(report, scope) {
   const { agencyId, brandId } = scope;
   const brief = report.brief && typeof report.brief === "object" ? report.brief : {};
   const counts = { use: 0, enhance: 0, skip: 0 };
+  // Project an engine score block (flat: quality/relevance/messaging/overall/verdict/...).
+  const projScores = (s) => ({
+    quality: s.quality ?? null, relevance: s.relevance ?? null,
+    messaging: s.messaging ?? null, overall: s.overall ?? null,
+    verdict: s.verdict || "use", captionAngle: s.captionAngle || "",
+    notes: s.notes || "", defects: Array.isArray(s.defects) ? s.defects : [],
+  });
+  // Faithful to the engine triage.json shape (nested `scores`; videos carry derivedStills +
+  // per-still stillScores) so the portal Triage view renders it. ALL media paths -> basename
+  // (no engine-tree leak): file, enhanced, derivedStills[], stillScores[].{still,enhanced}.
   const assets = (Array.isArray(report.assets) ? report.assets : []).map((a) => {
     const s = (a && a.scores) || {};
     const verdict = s.verdict || "use";
     if (counts[verdict] !== undefined) counts[verdict] += 1;
-    return {
+    const out = {
       file: baseName(a && a.file), kind: (a && a.kind) || "image",
-      quality: s.quality ?? null, relevance: s.relevance ?? null,
-      messaging: s.messaging ?? null, overall: s.overall ?? null,
-      verdict, captionAngle: s.captionAngle || "", notes: s.notes || "",
-      defects: Array.isArray(s.defects) ? s.defects : [],
+      scores: projScores(s),
       enhanced: a && a.enhanced ? baseName(a.enhanced) : null,
     };
+    if (a && a.enhanceNote) out.enhanceNote = String(a.enhanceNote);
+    if (Array.isArray(a && a.derivedStills)) out.derivedStills = a.derivedStills.map(baseName);
+    if (Array.isArray(a && a.stillScores)) {
+      out.stillScores = a.stillScores.map((ss) => ({
+        ...projScores(ss || {}),
+        still: baseName(ss && ss.still),
+        enhanced: ss && ss.enhanced ? baseName(ss.enhanced) : null,
+      }));
+    }
+    return out;
   });
   const rb = report.recommendedBundle || {};
   const doc = {
+    schemaVersion: report.schemaVersion ?? 1,
     submissionId, agencyId, brandId, brand: report.brand || scope.slug || null,
     triagedAt: report.triagedAt || null,
     brief: pick(brief, BRIEF_FIELDS),
