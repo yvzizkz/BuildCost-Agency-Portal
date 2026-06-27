@@ -1,6 +1,6 @@
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { QueueItem, Draft, TriageReport } from './types';
+import { QueueItem, Draft, TriageReport, Strategy } from './types';
 
 // createdAt arrives as one of three shapes (Firestore Timestamp | ISO string |
 // epoch number); normalize to millis so we can sort newest-first in the client.
@@ -71,6 +71,27 @@ export function subscribeToTriageReports(
         reports[d.id] = { submissionId: d.id, ...d.data() } as TriageReport;
       });
       onUpdate(reports);
+    },
+    onError
+  );
+}
+
+export function subscribeToStrategies(
+  agencyId: string,
+  brandId: string,
+  onUpdate: (strategies: Record<string, Strategy>) => void,
+  onError: (err: unknown) => void
+) {
+  const q = collection(db, 'agencies', agencyId, 'brands', brandId, 'strategies');
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const strategies: Record<string, Strategy> = {};
+      snapshot.forEach((d) => {
+        strategies[d.id] = { strategyId: d.id, ...d.data() } as Strategy;
+      });
+      onUpdate(strategies);
     },
     onError
   );

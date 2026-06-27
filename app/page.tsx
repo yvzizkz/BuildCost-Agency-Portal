@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
-import { BrandDoc, QueueItem, TriageReport } from '@/lib/types';
+import { BrandDoc, QueueItem, TriageReport, Strategy } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { subscribeToQueue, subscribeToTriageReports } from '@/lib/queue';
+import { subscribeToQueue, subscribeToTriageReports, subscribeToStrategies } from '@/lib/queue';
 import { requestGeneration } from '@/lib/commands';
 import { useSavedItems } from '@/lib/saved';
 import BrandPicker from '@/components/BrandPicker';
@@ -19,6 +19,7 @@ export default function HomePage() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [triageReports, setTriageReports] = useState<Record<string, TriageReport>>({});
+  const [strategies, setStrategies] = useState<Record<string, Strategy>>({});
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingQueue, setLoadingQueue] = useState(false);
   
@@ -84,9 +85,20 @@ export default function HomePage() {
           console.error('Triage reports subscription error:', err);
         }
       );
+      const unsubscribeStrategies = subscribeToStrategies(
+        profile.agencyId,
+        selectedBrandId,
+        (strats) => {
+          setStrategies(strats);
+        },
+        (err) => {
+          console.error('Strategies subscription error:', err);
+        }
+      );
       return () => {
         unsubscribeQueue();
         unsubscribeTriage();
+        unsubscribeStrategies();
       };
     } else {
       setQueueItems([]);
@@ -261,6 +273,7 @@ export default function HomePage() {
                     key={item.queueId}
                     item={item}
                     triageReport={triageReports[item.queueId]}
+                    strategy={strategies[item.queueId]}
                     agencyId={profile?.agencyId || ''}
                     brandId={selectedBrandId || ''}
                     uid={user?.uid || ''}
