@@ -23,6 +23,29 @@ function cleanNotes(s: string): string {
     .slice(0, NOTES_MAX);
 }
 
+// Caption-body cleaning PRESERVES line breaks (captions are multi-line) — strips
+// control chars except newline/tab, collapses runs of spaces, caps blank lines.
+const CAPTION_MAX = 3000;
+const HASHTAGS_MAX = 600;
+const CTA_MAX = 200;
+function cleanCaption(s: string): string {
+  return String(s ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, ' ') // control chars except \n (\x0a) and \t (\x09)
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, CAPTION_MAX);
+}
+/** Single-line clean (hashtags, CTA) — no newlines. */
+function cleanLine(s: string, max: number): string {
+  return String(s ?? '')
+    .replace(/[\x00-\x1f\x7f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
 export async function approve(
   agencyId: string,
   brandId: string,
@@ -75,6 +98,42 @@ export async function reject(
     requestedByUid: uid,
     queueId,
     notes: cleanedNotes,
+    createdAtMs: Date.now(),
+  };
+
+  await setDoc(commandDocRef, commandData);
+  return commandDocRef.id;
+}
+
+// Owner-edited caption. The portal can't write the draft directly (engine-authored,
+// read-only by rule), so this is a 'requested' command the bridge applies to the engine
+// draft + refreshes the GHL draft. Body keeps line breaks; hashtags/CTA are single-line.
+export async function editCaption(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  queueId: string,
+  copy: { body?: string; hashtags?: string; cta?: string }
+): Promise<string> {
+  if (!QUEUE_ID_RE.test(queueId)) {
+    throw new Error('Invalid queueId.');
+  }
+  const body = cleanCaption(copy.body || '');
+  const hashtags = cleanLine(copy.hashtags || '', HASHTAGS_MAX);
+  const cta = cleanLine(copy.cta || '', CTA_MAX);
+  if (!body && !hashtags && !cta) {
+    throw new Error('Nothing to save — the caption is empty.');
+  }
+
+  const commandsCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'commands');
+  const commandDocRef = doc(commandsCol);
+
+  const commandData = {
+    type: 'editCaption',
+    status: 'requested',
+    requestedByUid: uid,
+    queueId,
+    copy: { body, hashtags, cta },
     createdAtMs: Date.now(),
   };
 

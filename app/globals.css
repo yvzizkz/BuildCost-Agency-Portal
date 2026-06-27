@@ -638,6 +638,43 @@ body {
 .sp-gbp-body { padding: 0.2rem 0.85rem 0.8rem; font-size: 0.87rem; line-height: 1.5; color: #3c4043; }
 .sp-gbp-cta { display: block; width: calc(100% - 1.6rem); margin: 0 0.8rem 0.9rem; background: #fff; color: #1a73e8; border: 1px solid #dadce0; border-radius: 6px; padding: 0.6rem; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
 
+/* Inline caption editor */
+.caption-edit { margin-top: 0.25rem; }
+.btn-edit-caption {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+.btn-edit-caption:hover { color: var(--text-primary); border-color: var(--color-primary); }
+.caption-edit-form { display: flex; flex-direction: column; gap: 0.4rem; }
+.caption-edit-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.caption-edit-textarea, .caption-edit-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.5;
+  padding: 0.6rem 0.75rem;
+  resize: vertical;
+}
+.caption-edit-textarea:focus, .caption-edit-input:focus { outline: none; border-color: var(--border-focus); }
+.caption-edit-actions { display: flex; gap: 0.6rem; margin-top: 0.4rem; }
+
 /* Intake upload progress bar */
 .upload-progress {
   position: relative;

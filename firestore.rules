@@ -50,8 +50,8 @@ service cloud.firestore {
           allow create: if inAgency(agencyId) && hasBrand(brandId)
             && request.resource.data.status == 'requested'
             && request.resource.data.requestedByUid == request.auth.uid
-            && request.resource.data.type in ['approve','reject','submitContent','requestGeneration']
-            && (!(request.resource.data.type in ['approve','reject']) || canApprove());
+            && request.resource.data.type in ['approve','reject','submitContent','requestGeneration','editCaption']
+            && (!(request.resource.data.type in ['approve','reject','editCaption']) || canApprove());
           allow update, delete: if false;
         }
 

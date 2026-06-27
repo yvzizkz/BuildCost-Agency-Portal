@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QueueItem, Draft } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
-import { approve, reject, requestGeneration } from '@/lib/commands';
+import { approve, reject, requestGeneration, editCaption } from '@/lib/commands';
 import SocialPreview from './SocialPreview';
 import { friendlyError } from '@/lib/utils';
 
@@ -60,6 +60,11 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
   ]);
   const [generating, setGenerating] = useState(false);
   const [genMsg, setGenMsg] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState('');
+  const [editHashtags, setEditHashtags] = useState('');
+  const [editCta, setEditCta] = useState('');
+  const [editMsg, setEditMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (item.draftId) {
@@ -147,6 +152,50 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
       setGenerating(false);
     }
   };
+
+  const startEdit = () => {
+    const c = draft?.copy || {};
+    setEditBody(typeof c.body === 'string' ? c.body : '');
+    const h = c.hashtags;
+    setEditHashtags(Array.isArray(h) ? h.join(' ') : typeof h === 'string' ? h : '');
+    setEditCta(typeof c.cta === 'string' ? c.cta : '');
+    setEditMsg(null);
+    setError(null);
+    setEditing(true);
+  };
+
+  const handleSaveCaption = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    setEditMsg(null);
+    try {
+      await editCaption(agencyId, brandId, uid, item.queueId, {
+        body: editBody,
+        hashtags: editHashtags,
+        cta: editCta,
+      });
+      // Optimistic: reflect the edit in the preview immediately. The engine persists the
+      // change and refreshes the GHL draft, then re-mirrors the authoritative copy.
+      setDraft((prev) =>
+        prev ? { ...prev, copy: { ...prev.copy, body: editBody, hashtags: editHashtags, cta: editCta } } : prev
+      );
+      setEditing(false);
+      setEditMsg('Caption saved — updating your scheduled post…');
+    } catch (err: unknown) {
+      console.error(err);
+      setError(friendlyError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const hasCaption =
+    !!draft?.copy &&
+    (typeof draft.copy.body === 'string' ||
+      typeof draft.copy.cta === 'string' ||
+      draft.copy.hashtags !== undefined);
 
   const canGenerateMockups = item.type === 'intake' && !!item.projectId;
   const isActive = item.status !== 'approved' && item.status !== 'rejected';
@@ -238,6 +287,55 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
                 )}
               </div>
             )
+          )}
+
+          {hasCaption && (
+            <div className="caption-edit">
+              {!editing ? (
+                <button type="button" className="btn-edit-caption" onClick={startEdit}>
+                  ✏️ Edit caption
+                </button>
+              ) : (
+                <form onSubmit={handleSaveCaption} className="caption-edit-form">
+                  <label className="caption-edit-label">Caption</label>
+                  <textarea
+                    className="caption-edit-textarea"
+                    rows={5}
+                    value={editBody}
+                    onChange={(e) => setEditBody(e.target.value)}
+                    placeholder="Write the caption…"
+                  />
+                  <label className="caption-edit-label">Hashtags</label>
+                  <input
+                    className="caption-edit-input"
+                    value={editHashtags}
+                    onChange={(e) => setEditHashtags(e.target.value)}
+                    placeholder="#Example #Tags"
+                  />
+                  <label className="caption-edit-label">Call to action</label>
+                  <input
+                    className="caption-edit-input"
+                    value={editCta}
+                    onChange={(e) => setEditCta(e.target.value)}
+                    placeholder="Book a free consultation"
+                  />
+                  <div className="caption-edit-actions">
+                    <button type="submit" className="btn-approve" disabled={submitting}>
+                      {submitting ? 'Saving…' : 'Save caption'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-cancel"
+                      onClick={() => setEditing(false)}
+                      disabled={submitting}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+              {editMsg && <div className="success-banner">{editMsg}</div>}
+            </div>
           )}
 
           <div className="draft-qa-badges">
