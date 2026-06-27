@@ -88,7 +88,8 @@ export type CommandType =
   | 'reject'
   | 'submitContent'
   | 'requestGeneration'
-  | 'editCaption';
+  | 'editCaption'
+  | 'ingestLink';
 
 export interface CommandDoc {
   id?: string;
@@ -106,5 +107,21 @@ export interface CommandDoc {
     producer?: 'social' | 'reel' | string;
     [key: string]: unknown;
   };
+  // ingestLink (Dropbox -> Google Drive archive)
+  source?: 'dropbox' | string;
+  url?: string;
+  title?: string;
   createdAtMs: number;
+}
+
+// A file the bridge has archived into the owner's Google Drive (bridge-written, read-only).
+export interface DriveAsset {
+  id?: string;
+  name: string;
+  source: 'dropbox' | string;
+  driveFileId: string;
+  driveLink: string | null;
+  bytes: number;
+  requestedByUid?: string | null;
+  createdAt?: Timestamp | string | number;
 }

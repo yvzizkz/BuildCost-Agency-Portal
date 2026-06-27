@@ -6,6 +6,7 @@ import { BrandDoc } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { uploadAndSubmit, MAX_UPLOAD_BYTES } from '@/lib/submissions';
+import { ingestDropboxLink, isDropboxUrl } from '@/lib/commands';
 import Link from 'next/link';
 import { friendlyError, formatBytes } from '@/lib/utils';
 
@@ -26,6 +27,11 @@ export default function IntakePage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [dropboxUrl, setDropboxUrl] = useState('');
+  const [ingesting, setIngesting] = useState(false);
+  const [ingestMsg, setIngestMsg] = useState<string | null>(null);
+  const [ingestErr, setIngestErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile && profile.brands && profile.brands.length > 0) {
@@ -156,6 +162,28 @@ export default function IntakePage() {
       setError(friendlyError(err));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDropboxIngest = async () => {
+    if (!profile || !selectedBrandId || !user) return;
+    const url = dropboxUrl.trim();
+    setIngestErr(null);
+    setIngestMsg(null);
+    if (!isDropboxUrl(url)) {
+      setIngestErr('That doesn\'t look like a Dropbox link. Paste the full https://www.dropbox.com/… share link.');
+      return;
+    }
+    setIngesting(true);
+    try {
+      await ingestDropboxLink(profile.agencyId, selectedBrandId, user.uid, url, title.trim() || undefined);
+      setIngestMsg('Sent — we\'re saving that file straight into your Google Drive archive. Large files can take a few minutes.');
+      setDropboxUrl('');
+    } catch (err: unknown) {
+      console.error(err);
+      setIngestErr(friendlyError(err));
+    } finally {
+      setIngesting(false);
     }
   };
 
@@ -335,6 +363,35 @@ export default function IntakePage() {
                 {submitting ? `Uploading… ${progress}%` : 'Submit Media Package'}
               </button>
             </form>
+
+            <div className="dropbox-ingest">
+              <div className="dropbox-divider"><span>or send a big file from Dropbox</span></div>
+              <p className="dropbox-help">
+                Got files too large to upload here (long videos, big photo sets)? Paste a Dropbox
+                share link and we&apos;ll pull it straight into your Google Drive archive — no size worry.
+              </p>
+              {ingestErr && <div className="error-banner" style={{ marginBottom: '0.75rem' }}>{ingestErr}</div>}
+              {ingestMsg && <div className="success-banner" style={{ marginBottom: '0.75rem' }}>{ingestMsg}</div>}
+              <div className="dropbox-row">
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://www.dropbox.com/s/…?dl=0"
+                  value={dropboxUrl}
+                  onChange={(e) => setDropboxUrl(e.target.value)}
+                  className="form-input"
+                  aria-label="Dropbox share link"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleDropboxIngest}
+                  disabled={ingesting || !dropboxUrl.trim()}
+                >
+                  {ingesting ? 'Sending…' : 'Send to Drive'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

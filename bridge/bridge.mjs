@@ -28,16 +28,42 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import admin from "firebase-admin";
-import { buildDispatch, cleanEditCopy } from "./dispatch.mjs";
+import { buildDispatch, cleanEditCopy, cleanIngestLink, isDropboxHost } from "./dispatch.mjs";
 import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror } from "./mirror.mjs";
+import { driveConfigured, getAccessToken, ensureFolderPath, uploadFile } from "./drive.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Minimal .env loader (dependency-free). Drive OAuth secrets (client id/secret +
+ * refresh token) live in bridge/.env — gitignored — NOT in the launchd plist, so no
+ * secret value is ever committed. Only fills keys not already set by the environment.
+ */
+function loadDotEnv(p) {
+  let txt;
+  try { txt = fs.readFileSync(p, "utf8"); } catch { return; } // no .env yet → fail-open
+  for (const line of txt.split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq < 0) continue;
+    const k = t.slice(0, eq).trim();
+    let v = t.slice(eq + 1).trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    if (k && !(k in process.env)) process.env[k] = v;
+  }
+}
+loadDotEnv(path.join(__dirname, ".env"));
+
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "tenants.json"), "utf8"));
 const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
 const EXEC_TIMEOUT_MS = 120_000;
+const MAX_INGEST_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB cap on a single Dropbox ingest
 
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
@@ -187,6 +213,12 @@ async function processCommand(ref, data) {
     await ref.update({ status: "error", error: `unknown tenant ${agencyId}/${brandId}` });
     return;
   }
+  // ingestLink is bridge-native (fetch a Dropbox link -> the owner's Google Drive). It does
+  // NOT run an engine CLI, so it bypasses buildDispatch and is handled directly below.
+  if (data.type === "ingestLink") {
+    await processIngestLink(ref, data, tenant);
+    return;
+  }
   // editCaption carries freeform owner copy. dispatch.mjs is pure (no fs), so we
   // re-validate the copy at the boundary and write the cleaned {body,hashtags[],cta}
   // to a temp JSON file, threading only its path into the argv. Cleaned up in finally.
@@ -226,6 +258,103 @@ async function processCommand(ref, data) {
     }
   } finally {
     if (copyFile) { try { fs.unlinkSync(copyFile); } catch { /* ignore */ } }
+  }
+}
+
+/** Stream a web ReadableStream to disk with a hard byte cap (kills the stream if exceeded). */
+async function streamToFile(webStream, destPath, maxBytes) {
+  const nodeStream = Readable.fromWeb(webStream);
+  let total = 0;
+  nodeStream.on("data", (chunk) => {
+    total += chunk.length;
+    if (total > maxBytes) nodeStream.destroy(new Error("file exceeds the ingest size limit"));
+  });
+  await pipeline(nodeStream, fs.createWriteStream(destPath));
+}
+
+/**
+ * Download a Dropbox direct-download URL to a local file, re-validating EVERY redirect hop
+ * against the Dropbox allow-list (SSRF defense — Dropbox's dl=1 bounces to its CDN host) and
+ * enforcing a size cap. Returns { bytes, contentType }.
+ */
+async function downloadDropbox(url, destPath) {
+  let current = url;
+  let res = null;
+  for (let hop = 0; hop < 6; hop++) {
+    res = await fetch(current, { redirect: "manual" });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) throw new Error("download: redirect without a location");
+      const next = new URL(loc, current);
+      if (next.protocol !== "https:" || !isDropboxHost(next.hostname)) {
+        throw new Error("download blocked: redirect left the Dropbox domain");
+      }
+      current = next.toString();
+      continue;
+    }
+    break;
+  }
+  if (!res || !res.ok) throw new Error(`download failed (${res ? res.status : "no response"})`);
+  const len = Number(res.headers.get("content-length") || 0);
+  if (len && len > MAX_INGEST_BYTES) {
+    throw new Error(`file is larger than the ${Math.round(MAX_INGEST_BYTES / 1e9)} GB ingest limit`);
+  }
+  const contentType = res.headers.get("content-type") || "application/octet-stream";
+  if (!res.body) throw new Error("download: empty response body");
+  await streamToFile(res.body, destPath, MAX_INGEST_BYTES);
+  return { bytes: fs.statSync(destPath).size, contentType };
+}
+
+/**
+ * ingestLink: fetch an owner-pasted Dropbox link and archive it into the owner's own
+ * Google Drive (40 TB), under "BuildCost Agency / <brand> / incoming". Fail-OPEN: if Drive
+ * isn't connected yet, return a friendly error and change nothing else. The link host is
+ * validated in dispatch.mjs (cleanIngestLink) AND on every redirect hop in downloadDropbox.
+ * Pasted links are archived only — they do NOT auto-enter the content/reference pipeline.
+ */
+async function processIngestLink(ref, data, tenant) {
+  if (!driveConfigured()) {
+    await ref.update({
+      status: "error",
+      error: "Google Drive isn't connected yet — ask BuildCost to finish the one-time Drive setup.",
+    });
+    return;
+  }
+  const cleaned = cleanIngestLink({ source: data.source, url: data.url });
+  if (!cleaned.ok) {
+    await ref.update({ status: "error", error: cleaned.error });
+    return;
+  }
+  const { url, name } = cleaned.value;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `portal-ingest-${ref.id}-`));
+  const localPath = path.join(tmpDir, sanitizeName(name) || "dropbox-file");
+  try {
+    const meta = await downloadDropbox(url, localPath);
+    const token = await getAccessToken();
+    const folderId = await ensureFolderPath(token, [tenant.slug, "incoming"]);
+    const up = await uploadFile(token, { localPath, name, mimeType: meta.contentType, parentId: folderId });
+
+    const { agencyId, brandId } = data;
+    await db.doc(`agencies/${agencyId}/brands/${brandId}`).collection("driveAssets").doc().set({
+      name,
+      source: "dropbox",
+      driveFileId: up.id,
+      driveLink: up.webViewLink || null,
+      bytes: up.size || meta.bytes || 0,
+      requestedByUid: data.requestedByUid || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await ref.update({
+      status: "done",
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      result: { driveFileId: up.id, driveLink: up.webViewLink || null, name, bytes: up.size || meta.bytes || 0 },
+    });
+    console.log(`[ingest] ${tenant.slug}/${ref.id} -> Drive ${up.id} (${name}, ${up.size || meta.bytes || 0}B)`);
+  } catch (e) {
+    await ref.update({ status: "error", error: String(e?.message || e).slice(-800) });
+    console.error(`[ingest] ${tenant.slug}/${ref.id} FAILED:`, e?.message || e);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 

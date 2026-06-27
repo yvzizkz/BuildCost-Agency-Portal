@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDispatch, cleanEditCopy } from "../bridge/dispatch.mjs";
+import { buildDispatch, cleanEditCopy, cleanIngestLink, isDropboxHost } from "../bridge/dispatch.mjs";
 
 const TENANT = { repoRoot: "/repo", env: "/repo/.env", slug: "saddlewood" };
 const REPO = "/repo";
@@ -104,6 +104,48 @@ test("cleanEditCopy strips control chars and caps body length", () => {
   const c = cleanEditCopy({ body: "a".repeat(4000) + "\x00\x07bad", hashtags: "#x", cta: "" });
   assert.ok(c.body.length <= 3000);
   assert.ok(!c.body.includes("\x00"));
+});
+
+// ---- ingestLink (Dropbox -> Drive) -----------------------------------------
+test("isDropboxHost accepts dropbox.com + its download CDN, rejects look-alikes", () => {
+  for (const ok of ["www.dropbox.com", "dropbox.com", "dl.dropboxusercontent.com",
+    "uc123.dl.dropboxusercontent.com", "DROPBOX.COM"]) {
+    assert.equal(isDropboxHost(ok), true, `should accept ${ok}`);
+  }
+  for (const bad of ["dropbox.com.evil.com", "notdropbox.com", "evil.com", "dropboxusercontent.com.attacker.net",
+    "169.254.169.254", "localhost", ""]) {
+    assert.equal(isDropboxHost(bad), false, `should reject ${bad}`);
+  }
+});
+
+test("cleanIngestLink normalizes a share link to dl=1 and a safe name", () => {
+  const r = cleanIngestLink({ source: "dropbox", url: "https://www.dropbox.com/s/abc123/My%20Project%20Video.mp4?dl=0" });
+  assert.ok(r.ok);
+  assert.equal(r.value.source, "dropbox");
+  assert.match(r.value.url, /dl=1/);
+  assert.ok(!/dl=0/.test(r.value.url));
+  assert.equal(r.value.name, "My_Project_Video.mp4");
+});
+
+test("cleanIngestLink passes through the CDN host (already direct) and derives a name", () => {
+  const r = cleanIngestLink({ source: "dropbox", url: "https://uc1.dl.dropboxusercontent.com/cd/0/get/file.zip" });
+  assert.ok(r.ok);
+  assert.equal(r.value.name, "file.zip");
+});
+
+test("cleanIngestLink rejects non-dropbox hosts, http, and bad sources (SSRF guard)", () => {
+  assert.equal(cleanIngestLink({ source: "dropbox", url: "https://evil.com/x" }).ok, false);
+  assert.equal(cleanIngestLink({ source: "dropbox", url: "http://www.dropbox.com/s/x?dl=1" }).ok, false); // not https
+  assert.equal(cleanIngestLink({ source: "dropbox", url: "https://dropbox.com.attacker.net/x" }).ok, false);
+  assert.equal(cleanIngestLink({ source: "dropbox", url: "not a url" }).ok, false);
+  assert.equal(cleanIngestLink({ source: "gdrive", url: "https://www.dropbox.com/s/x" }).ok, false); // wrong source
+  assert.equal(cleanIngestLink({ source: "dropbox", url: "file:///etc/passwd" }).ok, false);
+});
+
+test("cleanIngestLink falls back to a default name when the path has no filename", () => {
+  const r = cleanIngestLink({ source: "dropbox", url: "https://www.dropbox.com/" });
+  assert.ok(r.ok);
+  assert.equal(r.value.name, "dropbox-file");
 });
 
 // ---- requestGeneration: social ---------------------------------------------

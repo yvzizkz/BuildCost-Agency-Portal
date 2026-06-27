@@ -141,6 +141,53 @@ export async function editCaption(
   return commandDocRef.id;
 }
 
+// Dropbox-ingest: the owner pastes a Dropbox SHARE link and the bridge fetches it
+// server-side into their own Google Drive (40 TB) under "BuildCost Agency/<brand>/incoming".
+// Mirrors bridge/dispatch.mjs isDropboxHost — keep in sync. Pasted links are archived
+// only; they do NOT auto-enter the content pipeline.
+const DROPBOX_HOST_RE = /(^|\.)dropbox\.com$/i;
+const DROPBOX_DL_HOST_RE = /(^|\.)dropboxusercontent\.com$/i;
+
+/** True only for an https Dropbox share/CDN link — used for fail-fast client validation. */
+export function isDropboxUrl(url: string): boolean {
+  let u: URL;
+  try { u = new URL(String(url || '').trim()); } catch { return false; }
+  return u.protocol === 'https:' && (DROPBOX_HOST_RE.test(u.hostname) || DROPBOX_DL_HOST_RE.test(u.hostname));
+}
+
+export async function ingestDropboxLink(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  url: string,
+  title?: string
+): Promise<string> {
+  const clean = String(url || '').trim();
+  if (!isDropboxUrl(clean)) {
+    throw new Error('Please paste a valid Dropbox share link (it should start with https://www.dropbox.com/…).');
+  }
+
+  const commandsCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'commands');
+  const commandDocRef = doc(commandsCol);
+
+  const commandData: {
+    type: string; status: string; requestedByUid: string;
+    source: string; url: string; title?: string; createdAtMs: number;
+  } = {
+    type: 'ingestLink',
+    status: 'requested',
+    requestedByUid: uid,
+    source: 'dropbox',
+    url: clean,
+    createdAtMs: Date.now(),
+  };
+  const t = cleanLine(title || '', NOTES_MAX);
+  if (t) commandData.title = t;
+
+  await setDoc(commandDocRef, commandData);
+  return commandDocRef.id;
+}
+
 export async function requestGeneration(
   agencyId: string,
   brandId: string,

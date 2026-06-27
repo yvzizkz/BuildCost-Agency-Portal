@@ -1151,3 +1151,42 @@ body {
   display: flex;
   gap: 1rem;
 }
+
+/* --- Dropbox -> Drive ingest (intake page) --------------------------------- */
+.dropbox-ingest {
+  margin-top: 1.75rem;
+}
+.dropbox-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.85rem;
+}
+.dropbox-divider::before,
+.dropbox-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+.dropbox-divider span { padding: 0 0.85rem; }
+.dropbox-help {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 0.9rem;
+}
+.dropbox-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+.dropbox-row .form-input { flex: 1; }
+.dropbox-row .btn-secondary { white-space: nowrap; }
+@media (max-width: 560px) {
+  .dropbox-row { flex-direction: column; }
+}

@@ -59,6 +59,50 @@ function fail(error) {
   return { ok: false, error };
 }
 
+// Dropbox-ingest host allow-list (SSRF guard). Only Dropbox share hosts and their
+// download CDN are accepted; the bridge re-validates EVERY redirect hop against this.
+const DROPBOX_HOST_RE = /(^|\.)dropbox\.com$/i;
+const DROPBOX_DL_HOST_RE = /(^|\.)dropboxusercontent\.com$/i;
+
+/** True if host is a Dropbox share host or its download CDN (dl.dropboxusercontent.com etc). */
+export function isDropboxHost(host) {
+  const h = String(host || "").toLowerCase();
+  return DROPBOX_HOST_RE.test(h) || DROPBOX_DL_HOST_RE.test(h);
+}
+
+/** Reduce an arbitrary string to a safe Drive filename (basename only, no path traversal). */
+function safeFileName(name) {
+  const base = String(name || "").split(/[\\/]/).pop() || "";
+  const cleaned = base
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/^[._]+/, "")
+    .replace(/_{2,}/g, "_")
+    .slice(0, 180);
+  return cleaned || "";
+}
+
+/**
+ * Validate + normalize an owner-supplied ingest link (Dropbox only, for now). Returns
+ * { ok:true, value:{ source, url, name } } with the URL forced to direct-download (dl=1)
+ * and a safe filename, or { ok:false, error }. This is the boundary validator for
+ * `ingestLink` commands — the SSRF allow-list + https-only check live here so they are
+ * unit-testable without Firebase or network. The bridge fetch re-checks every redirect.
+ */
+export function cleanIngestLink(payload) {
+  const source = String(payload?.source || "");
+  if (source !== "dropbox") return fail(`unsupported ingest source: ${source || "(none)"}`);
+  let u;
+  try { u = new URL(String(payload?.url || "")); } catch { return fail("invalid URL"); }
+  if (u.protocol !== "https:") return fail("ingest link must be https");
+  if (!isDropboxHost(u.hostname)) return fail("only Dropbox share links are supported");
+  // Force a direct download for share-page links (dl=1); the CDN host already serves bytes.
+  if (DROPBOX_HOST_RE.test(u.hostname.toLowerCase())) u.searchParams.set("dl", "1");
+  let raw = "";
+  try { raw = decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() || ""); } catch { raw = ""; }
+  const name = safeFileName(raw) || "dropbox-file";
+  return { ok: true, value: { source, url: u.toString(), name } };
+}
+
 /** Trim, strip control chars, collapse whitespace, cap length. */
 function cleanNotes(s) {
   return String(s == null ? "" : s)
