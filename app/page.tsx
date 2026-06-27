@@ -114,7 +114,6 @@ export default function HomePage() {
   // been sent back for revision and drop out of both lists.
   // "Saved" items move from review to their own tab.
   const approvedItems = queueItems.filter((i) => i.status === 'approved');
-  const rejectedItems = queueItems.filter((i) => i.status === 'rejected');
 
   const savedItems = queueItems.filter(
     (i) => savedIds.has(i.queueId) && i.status !== 'approved' && i.status !== 'rejected'
