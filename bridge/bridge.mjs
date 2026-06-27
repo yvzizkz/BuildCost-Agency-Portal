@@ -228,7 +228,10 @@ async function processSubmission(ref, data) {
  */
 async function runTriageAndStrategy(tenant, submissionId, projectId, intent) {
   const out = { triage: { status: "skipped" }, strategy: { status: "skipped" } };
-  const built = buildSubmissionPipeline(tenant, submissionId, projectId, intent);
+  // The intent-capture form (#11) writes the owner intent as a nested `brief`; raw/legacy
+  // submissions carry it flat. Prefer the structured brief, fall back to flat for back-compat.
+  const briefIntent = (intent && intent.brief) || intent || {};
+  const built = buildSubmissionPipeline(tenant, submissionId, projectId, briefIntent);
   if (!built.ok) { out.triage = { status: "skipped", error: built.error }; return out; }
   const subRel = `growth-assets/submissions/${tenant.slug}/${submissionId}`;
   try {
