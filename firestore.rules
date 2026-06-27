@@ -31,6 +31,9 @@ service cloud.firestore {
         match /drafts/{id}     { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
         match /reports/{id}    { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
         match /engagement/{id} { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
+        // Content pipeline (Phase 2/3): bridge-projected from triage.json / strategy.json — client read-only.
+        match /triageReports/{id} { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
+        match /strategies/{id}    { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
         // Dropbox/Drive archive index — bridge-written; client read-only.
         match /driveAssets/{id} { allow read: if inAgency(agencyId) && hasBrand(brandId); allow write: if false; }
 

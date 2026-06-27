@@ -141,4 +141,89 @@ export function planMirror(prevHashes, projections) {
   return { upserts, archives, seen };
 }
 
+// --------------------------------------------------------------------------- //
+// Phase 2/3 — triage.json + strategy.json read-projections (engine -> Firestore).
+// Same discipline as projectItem: PURE, client-safe (media paths reduced to a
+// basename — never leak the engine tree), and content-hashed so the worker only
+// writes on real change. These feed the read-only `triageReports` / `strategies`
+// collections the portal's triage-results + calendar UIs render; clients never write
+// them (firestore.rules). Both are keyed by submissionId so a submission's triage +
+// calendar are looked up by the same id the owner created.
+// --------------------------------------------------------------------------- //
+function baseName(p) { return path.basename(String(p || "")); }
+
+// Intent fields surfaced from the triage brief (campaign/mediaRights stay internal).
+const BRIEF_FIELDS = ["motivation", "suggestedMotivation", "objective", "channel", "offer",
+  "mustSay", "businessType", "audienceNote"];
+
+/** Project one triage.json into a client-safe triageReports doc; null if unusable. */
+export function projectTriage(report, scope) {
+  if (!report || typeof report !== "object") return null;
+  const submissionId = report.submissionId;
+  if (!submissionId) return null;
+  const { agencyId, brandId } = scope;
+  const brief = report.brief && typeof report.brief === "object" ? report.brief : {};
+  const counts = { use: 0, enhance: 0, skip: 0 };
+  const assets = (Array.isArray(report.assets) ? report.assets : []).map((a) => {
+    const s = (a && a.scores) || {};
+    const verdict = s.verdict || "use";
+    if (counts[verdict] !== undefined) counts[verdict] += 1;
+    return {
+      file: baseName(a && a.file), kind: (a && a.kind) || "image",
+      quality: s.quality ?? null, relevance: s.relevance ?? null,
+      messaging: s.messaging ?? null, overall: s.overall ?? null,
+      verdict, captionAngle: s.captionAngle || "", notes: s.notes || "",
+      defects: Array.isArray(s.defects) ? s.defects : [],
+      enhanced: a && a.enhanced ? baseName(a.enhanced) : null,
+    };
+  });
+  const rb = report.recommendedBundle || {};
+  const doc = {
+    submissionId, agencyId, brandId, brand: report.brand || scope.slug || null,
+    triagedAt: report.triagedAt || null,
+    brief: pick(brief, BRIEF_FIELDS),
+    research: report.research || null,
+    template: report.template || null,
+    assets,
+    recommendedBundle: {
+      routesReady: Array.isArray(rb.routesReady) ? rb.routesReady : [],
+      routesPhase2: Array.isArray(rb.routesPhase2) ? rb.routesPhase2 : [],
+      topAssets: (Array.isArray(rb.topAssets) ? rb.topAssets : []).map(baseName),
+    },
+    summary: { assetCount: assets.length, ...counts },
+    humanGate: report.humanGate || null,
+  };
+  return { key: submissionId, scope: { agencyId, brandId }, doc };
+}
+
+const STRATEGY_FIELDS = ["strategyId", "submissionId", "plannedAt", "horizon", "horizonDays",
+  "businessType", "motivation", "motivationLabel", "suggestedMotivation", "objective", "channel",
+  "offer", "mustSay", "theme", "cadence", "channelMix", "pillars", "research", "routesReady",
+  "routesPhase2", "summary", "enrichment", "humanGate"];
+const SLOT_FIELDS = ["n", "date", "localDate", "dayOfWeek", "route", "routeStatus", "provider",
+  "model", "kind", "aspect", "style", "needsSource", "creativeDirection", "channel", "pillar",
+  "hook", "captionDirection", "status"];
+
+/** Project one strategy.json into a client-safe strategies doc; null if unusable. */
+export function projectStrategy(strategy, scope) {
+  if (!strategy || typeof strategy !== "object") return null;
+  const key = strategy.submissionId || strategy.strategyId;
+  if (!key) return null;
+  const { agencyId, brandId } = scope;
+  const slots = (Array.isArray(strategy.slots) ? strategy.slots : []).map((s) => ({
+    ...pick(s, SLOT_FIELDS),
+    sourceAsset: s && s.sourceAsset ? baseName(s.sourceAsset) : null,
+  }));
+  const doc = {
+    ...pick(strategy, STRATEGY_FIELDS),
+    agencyId, brandId, brand: strategy.brand || scope.slug || null, slots,
+  };
+  return { key, scope: { agencyId, brandId }, doc };
+}
+
+/** Stable content hash over a projected doc (so the worker writes only on real change). */
+export function docHash(doc) {
+  return crypto.createHash("sha1").update(stableStringify(doc)).digest("hex");
+}
+
 export const _internals = { stableStringify, pick, QUEUE_FIELDS, DRAFT_FIELDS };

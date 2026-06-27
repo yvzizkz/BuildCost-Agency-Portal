@@ -33,8 +33,9 @@ import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import admin from "firebase-admin";
-import { buildDispatch, cleanEditCopy, cleanIngestLink, isDropboxHost } from "./dispatch.mjs";
-import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror } from "./mirror.mjs";
+import { buildDispatch, buildSubmissionPipeline, cleanEditCopy, cleanIngestLink, isDropboxHost } from "./dispatch.mjs";
+import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror,
+  projectTriage, projectStrategy, docHash } from "./mirror.mjs";
 import { driveConfigured, getAccessToken, ensureFolderPath, uploadFile } from "./drive.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,7 @@ loadDotEnv(path.join(__dirname, ".env"));
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "tenants.json"), "utf8"));
 const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
 const EXEC_TIMEOUT_MS = 120_000;
+const PIPELINE_TIMEOUT_MS = 240_000; // triage scores each asset via Gemini (cheap, fail-open)
 const MAX_INGEST_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB cap on a single Dropbox ingest
 
 admin.initializeApp({
@@ -107,6 +109,14 @@ function runIntake(tenant, submissionPath, imagesDir, defaultCity) {
 function runExec(exec) {
   return new Promise((resolve) => {
     execFile(exec.file, exec.argv, { cwd: exec.cwd, timeout: EXEC_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout, stderr) => resolve({ code: err?.code ?? 0, killed: err?.killed ?? false, stdout, stderr }));
+  });
+}
+
+/** Run a python engine script with an argv array (no shell). Resolves {code,killed,stdout,stderr}. */
+function runPy(cwd, argv, timeout = PIPELINE_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    execFile("python3", argv, { cwd, timeout, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => resolve({ code: err?.code ?? 0, killed: err?.killed ?? false, stdout, stderr }));
   });
 }
@@ -180,12 +190,22 @@ async function processSubmission(ref, data) {
     try { parsed = JSON.parse((r.stdout || "").trim().split("\n").pop()); } catch { /* leave null */ }
 
     if (r.code === 0 && parsed?.ok) {
+      const result = { ...parsed };
+      // Phase 2/3: best-effort triage + strategy so the owner gets a calendar to review.
+      // FAIL-OPEN — intake already succeeded; a pipeline error is recorded, never fatal.
+      if (parsed.status === "ingested" && parsed.projectId) {
+        const pipe = await runTriageAndStrategy(tenant, ref.id, parsed.projectId, data);
+        result.triage = pipe.triage;
+        result.strategy = pipe.strategy;
+      }
       await ref.update({
         status: "done",
         processedAt: admin.firestore.FieldValue.serverTimestamp(),
-        result: parsed,
+        result,
       });
-      console.log(`[intake] ${tenant.slug}/${ref.id} -> ${parsed.status} (${parsed.projectId || "-"})`);
+      console.log(`[intake] ${tenant.slug}/${ref.id} -> ${parsed.status} (${parsed.projectId || "-"})`
+        + (result.strategy ? ` | triage:${result.triage?.status} strategy:${result.strategy?.status}` : ""));
+      runMirror(); // surface the new triage/strategy promptly (don't wait for the 60s poll)
     } else {
       const msg = parsed?.error || (r.stderr || "").slice(-800) || `exit ${r.code}${r.killed ? " (timeout)" : ""}`;
       await ref.update({ status: "error", error: msg });
@@ -197,6 +217,36 @@ async function processSubmission(ref, data) {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * After a successful intake, build a calendar to review: run triage (score the ingested
+ * gallery) then strategy (the dated plan). DRAFT-ONLY — no generation spend (triage runs
+ * without --enhance, strategy without --enrich); both write only under growth-assets/
+ * submissions/. FAIL-OPEN: a triage/strategy failure is recorded but never fails the
+ * submission (Marco's rule — enrichment never blocks). Returns {triage, strategy} statuses.
+ */
+async function runTriageAndStrategy(tenant, submissionId, projectId, intent) {
+  const out = { triage: { status: "skipped" }, strategy: { status: "skipped" } };
+  const built = buildSubmissionPipeline(tenant, submissionId, projectId, intent);
+  if (!built.ok) { out.triage = { status: "skipped", error: built.error }; return out; }
+  const subRel = `growth-assets/submissions/${tenant.slug}/${submissionId}`;
+  try {
+    const t = await runPy(tenant.repoRoot, built.triage.argv);
+    out.triage = t.code === 0
+      ? { status: "done", path: `${subRel}/triage.json` }
+      : { status: "error", error: (t.stderr || "").slice(-300) || `exit ${t.code}${t.killed ? " (timeout)" : ""}` };
+  } catch (e) { out.triage = { status: "error", error: String(e?.message || e).slice(-300) }; }
+
+  if (out.triage.status === "done") {
+    try {
+      const s = await runPy(tenant.repoRoot, built.strategy.argv);
+      out.strategy = s.code === 0
+        ? { status: "done", path: `${subRel}/strategy.json` }
+        : { status: "error", error: (s.stderr || "").slice(-300) || `exit ${s.code}${s.killed ? " (timeout)" : ""}` };
+    } catch (e) { out.strategy = { status: "error", error: String(e?.message || e).slice(-300) }; }
+  }
+  return out;
 }
 
 /**
@@ -366,6 +416,8 @@ async function processIngestLink(ref, data, tenant) {
 // --------------------------------------------------------------------------- //
 const mirrorHashes = new Map();          // queueId -> last hash
 let mirrorMeta = new Map();              // queueId -> { agencyId, brandId }
+const triageHashes = new Map();          // submissionId -> last triageReports doc hash
+const strategyHashes = new Map();        // submissionId -> last strategies doc hash
 let mirrorRunning = false;
 let mirrorPending = false;
 
@@ -378,6 +430,49 @@ function agencyRepos() {
     .filter(([id, a]) => !id.startsWith("_") && a && a.repoRoot)
     .map(([agencyId, a]) => ({ agencyId, repoRoot: a.repoRoot,
       queuePath: path.join(a.repoRoot, "growth-assets", "review-queue.json") }));
+}
+
+/** Walk each agency's growth-assets/submissions/<slug>/<id>/ for triage.json + strategy.json. */
+function submissionProjections() {
+  const triage = [], strategy = [];
+  const subDirs = (d) => {
+    try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); }
+    catch { return []; }
+  };
+  for (const repo of agencyRepos()) {
+    const root = path.join(repo.repoRoot, "growth-assets", "submissions");
+    for (const slug of subDirs(root)) {
+      const brand = resolveBrand(TENANTS, slug);
+      if (!brand) continue;                                   // skip slugs not in the tenant map
+      const slugDir = path.join(root, slug);
+      for (const id of subDirs(slugDir)) {
+        const tRep = readJson(path.join(slugDir, id, "triage.json"));
+        const sRep = readJson(path.join(slugDir, id, "strategy.json"));
+        if (tRep) { const p = projectTriage(tRep, brand); if (p) { p.hash = docHash(p.doc); triage.push(p); } }
+        if (sRep) { const p = projectStrategy(sRep, brand); if (p) { p.hash = docHash(p.doc); strategy.push(p); } }
+      }
+    }
+  }
+  return { triage, strategy };
+}
+
+/**
+ * Upsert a read-only sub-collection (triageReports / strategies), content-hash gated so we
+ * write only on real change. Submissions persist on disk, so we don't archive vanished docs
+ * (a stale doc is harmless and submissions aren't a client-deletable surface).
+ */
+async function mirrorSubCollection(coll, prevHashes, projections) {
+  let wrote = 0;
+  for (const p of projections) {
+    if (prevHashes.get(p.key) === p.hash) continue;
+    const { agencyId, brandId } = p.scope;
+    await db.doc(`agencies/${agencyId}/brands/${brandId}`).collection(coll).doc(p.key).set(
+      { ...p.doc, contentHash: p.hash, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    wrote += 1;
+  }
+  prevHashes.clear();
+  for (const p of projections) prevHashes.set(p.key, p.hash);
+  if (wrote) console.log(`[mirror] ${coll}: ${wrote} upserted, ${projections.length} live`);
 }
 
 async function runMirror() {
@@ -427,6 +522,11 @@ async function runMirror() {
         .collection("queueItems").doc(qid)
         .set({ archived: true, archivedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     }
+
+    // Phase 2/3: mirror triage.json + strategy.json -> read-only collections (content-hash gated).
+    const subs = submissionProjections();
+    await mirrorSubCollection("triageReports", triageHashes, subs.triage);
+    await mirrorSubCollection("strategies", strategyHashes, subs.strategy);
 
     // roll forward the in-memory state to exactly what's in the queue now
     mirrorHashes.clear();

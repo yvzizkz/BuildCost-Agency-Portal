@@ -278,4 +278,66 @@ export function buildDispatch(tenant, type, payload = {}) {
   };
 }
 
+// --------------------------------------------------------------------------- //
+// Phase 2/3 — post-intake pipeline (triage -> strategy). Pure argv builder, same
+// security discipline as buildDispatch: validate every owner string, pass discrete
+// argv items (no shell), and keep the spend path structurally absent.
+// --------------------------------------------------------------------------- //
+const MOTIVATION_RE = /^[a-z][a-z0-9_]{0,40}$/;          // a submission-templates motivation key
+const PIPELINE_CHANNELS = new Set(["organic", "ads", "both"]);
+const PIPELINE_OBJECTIVES = new Set(["awareness", "leads", "booked_jobs", "reviews"]);
+const OFFER_MAX = 200;
+const MUST_SAY_MAX = 5;
+
+const PIPELINE_SCRIPTS = {
+  triage: ".claude/skills/submission-triage/triage.py",
+  strategy: ".claude/skills/content-strategy/strategy_planner.py",
+};
+
+/**
+ * Build the post-intake DRAFT-ONLY pipeline argv (triage -> strategy) for a freshly
+ * ingested submission. Pure + testable (no fs, no Firebase). Owner intent is OPTIONAL:
+ * any field absent falls back to cold-start ('not_sure'), so this works before the
+ * intent-capture form ships and gets richer once it does. NO spend path: triage runs
+ * WITHOUT --enhance (no image-gen) and strategy WITHOUT --enrich (no AI); both are
+ * draft-only and write only under growth-assets/submissions/<slug>/<id>/.
+ *
+ * @returns {{ok:true, triage:{argv:string[]}, strategy:{argv:string[]}} | {ok:false, error:string}}
+ */
+export function buildSubmissionPipeline(tenant, submissionId, projectId, intent = {}) {
+  if (!tenant || !SLUG_RE.test(tenant.slug || "")) return fail("invalid or unresolved tenant/brand");
+  if (!QUEUE_ID_RE.test(String(submissionId || ""))) return fail("invalid submissionId");
+  if (!SLUG_ID_RE.test(String(projectId || ""))) return fail("invalid projectId");
+  const slug = tenant.slug;
+  const abs = (rel) => path.join(tenant.repoRoot, rel);
+
+  const motivation = String(intent.motivation || "").trim() || "not_sure";
+  if (!MOTIVATION_RE.test(motivation)) return fail(`invalid motivation: ${motivation}`);
+  const horizon = intent.horizon === "month" ? "month" : "week";
+
+  const triageArgv = [abs(PIPELINE_SCRIPTS.triage), "--brand", slug, "--from-project", projectId,
+    "--submission-id", submissionId, "--motivation", motivation, "--mode", "triage"];
+  if (intent.channel != null && intent.channel !== "") {
+    if (!PIPELINE_CHANNELS.has(String(intent.channel))) return fail(`invalid channel: ${intent.channel}`);
+    triageArgv.push("--channel", String(intent.channel));
+  }
+  if (intent.objective != null && intent.objective !== "") {
+    if (!PIPELINE_OBJECTIVES.has(String(intent.objective))) return fail(`invalid objective: ${intent.objective}`);
+    triageArgv.push("--objective", String(intent.objective));
+  }
+  const offer = cleanNotes(intent.offer).slice(0, OFFER_MAX);
+  if (offer) triageArgv.push("--offer", offer);
+  if (Array.isArray(intent.mustSay)) {
+    for (const m of intent.mustSay.slice(0, MUST_SAY_MAX)) {
+      const v = cleanNotes(m);
+      if (v) triageArgv.push("--must-say", v);
+    }
+  }
+
+  const strategyArgv = [abs(PIPELINE_SCRIPTS.strategy), "--brand", slug,
+    "--submission-id", submissionId, "--horizon", horizon, "--mode", "write"];
+
+  return { ok: true, triage: { argv: triageArgv }, strategy: { argv: strategyArgv } };
+}
+
 export const _internals = { cleanNotes, clampInt, parseApprove, QUEUE_ID_RE, SLUG_ID_RE, GENERATORS };
