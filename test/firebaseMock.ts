@@ -9,3 +9,4 @@ export const mockCollection = vi.mocked(firestore.collection);
 export const mockQuery = vi.mocked(firestore.query);
 
 export const mockUploadBytes = vi.mocked(storage.uploadBytes);
+export const mockUploadBytesResumable = vi.mocked(storage.uploadBytesResumable);

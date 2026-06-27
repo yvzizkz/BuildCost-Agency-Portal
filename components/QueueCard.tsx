@@ -5,7 +5,25 @@ import { QueueItem, Draft } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
 import { approve, reject, requestGeneration } from '@/lib/commands';
 import MediaPreview from './MediaPreview';
-import { getErrorMessage } from '@/lib/utils';
+import { friendlyError } from '@/lib/utils';
+
+// Plain-language status labels for non-technical owners. The CSS class still keys
+// off the raw status; only the visible text is humanized.
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
+  'needs-human': 'Needs your review',
+  'awaiting-approval': 'Awaiting your approval',
+  approved: 'Approved',
+  rejected: 'Revisions requested',
+};
+
+function statusLabel(status?: string): string {
+  const key = status || 'pending';
+  return (
+    STATUS_LABELS[key] ||
+    key.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
 
 interface QueueCardProps {
   item: QueueItem;
@@ -68,7 +86,7 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
       setSuccessMsg('Approval command submitted successfully!');
     } catch (err: unknown) {
       console.error(err);
-      setError(getErrorMessage(err));
+      setError(friendlyError(err));
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +109,7 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
       setNotes('');
     } catch (err: unknown) {
       console.error(err);
-      setError(getErrorMessage(err));
+      setError(friendlyError(err));
     } finally {
       setSubmitting(false);
     }
@@ -124,7 +142,7 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
       );
     } catch (err: unknown) {
       console.error(err);
-      setError(getErrorMessage(err));
+      setError(friendlyError(err));
     } finally {
       setGenerating(false);
     }
@@ -142,7 +160,7 @@ export default function QueueCard({ item, agencyId, brandId, uid }: QueueCardPro
         </div>
         <div className="queue-card-status">
           <span className={`status-badge status-${item.status || 'pending'}`}>
-            {(item.status || 'pending').toUpperCase()}
+            {statusLabel(item.status)}
           </span>
           {item.ghlStatus && (
             <span className="status-badge ghl-draft" title="Pushed to the GHL Social Planner as a draft">

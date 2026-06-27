@@ -444,6 +444,80 @@ body {
   background-color: var(--color-error-bg);
   color: var(--color-error);
 }
+.status-badge.status-needs-human,
+.status-badge.status-awaiting-approval {
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+/* Queue tabs (Needs Review vs Approved & Scheduled) */
+.queue-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.queue-tab {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: var(--transition-smooth);
+}
+.queue-tab:hover {
+  color: var(--text-secondary);
+}
+.queue-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-primary);
+}
+.queue-tab .tab-count {
+  display: inline-block;
+  margin-left: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+}
+.queue-tab.active .tab-count {
+  background: hsla(210, 100%, 55%, 0.2);
+  color: var(--color-primary);
+}
+
+/* Intake upload progress bar */
+.upload-progress {
+  position: relative;
+  height: 30px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: 1rem;
+}
+.upload-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: var(--color-primary);
+  transition: width 0.2s ease;
+}
+.upload-progress-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
 .queue-card-body {
   display: flex;

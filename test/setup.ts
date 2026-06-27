@@ -40,6 +40,19 @@ vi.mock('firebase/storage', () => ({
   getStorage: vi.fn(() => ({})),
   ref: vi.fn((s, path) => ({ path })),
   uploadBytes: vi.fn(() => Promise.resolve()),
+  // Resumable task: immediately reports full progress then completes.
+  uploadBytesResumable: vi.fn((storageRef, file) => ({
+    on: (
+      _event: string,
+      next?: (snap: { bytesTransferred: number; totalBytes: number }) => void,
+      _error?: (err: unknown) => void,
+      complete?: () => void
+    ) => {
+      const size = (file && typeof file.size === 'number') ? file.size : 0;
+      if (next) next({ bytesTransferred: size, totalBytes: size });
+      if (complete) complete();
+    },
+  })),
 }));
 
 // Also mock the local firebase.ts to ensure it uses the mocked versions

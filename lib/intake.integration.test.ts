@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { uploadAndSubmit } from './submissions';
-import { mockSetDoc, mockUploadBytes } from '../test/firebaseMock';
+import { mockSetDoc, mockUploadBytesResumable } from '../test/firebaseMock';
 
 describe('Intake Flow Integration', () => {
   beforeEach(() => {
@@ -22,15 +22,17 @@ describe('Intake Flow Integration', () => {
       processIndexes: [1],
     });
 
-    // Verify Storage uploads
-    expect(mockUploadBytes).toHaveBeenCalledTimes(2);
-    expect(mockUploadBytes).toHaveBeenCalledWith(
+    // Verify Storage uploads (resumable, with content-type metadata)
+    expect(mockUploadBytesResumable).toHaveBeenCalledTimes(2);
+    expect(mockUploadBytesResumable).toHaveBeenCalledWith(
       expect.objectContaining({ path: expect.stringContaining('hero.jpg') }),
-      files[0]
+      files[0],
+      expect.objectContaining({ contentType: 'image/jpeg' })
     );
-    expect(mockUploadBytes).toHaveBeenCalledWith(
+    expect(mockUploadBytesResumable).toHaveBeenCalledWith(
       expect.objectContaining({ path: expect.stringContaining('process.jpg') }),
-      files[1]
+      files[1],
+      expect.objectContaining({ contentType: 'image/jpeg' })
     );
 
     // Verify Firestore submission record
