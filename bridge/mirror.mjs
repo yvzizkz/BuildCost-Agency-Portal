@@ -171,15 +171,35 @@ export function projectTriage(report, scope) {
     verdict: s.verdict || "use", captionAngle: s.captionAngle || "",
     notes: s.notes || "", defects: Array.isArray(s.defects) ? s.defects : [],
   });
+  // A triage asset's SOURCE file lives in the engine tree; the portal can't read it, so the
+  // Triage view's thumbnail needs the bytes pushed to Storage + a resolvable path. storagePath
+  // is a PORTAL Storage path (no engine-tree leak); the on-disk localPath rides in `uploads`
+  // (the bridge uploads it) and is NEVER written to the doc. derivedStills/enhanced stay
+  // basenamed and un-uploaded — nothing renders them yet (add upload here when a consumer does).
+  const storageFor = (fileName) => `agencies/${agencyId}/brands/${brandId}/triage/${submissionId}/${fileName}`;
+  const localFor = (rel) => (rel
+    ? (path.isAbsolute(rel) ? rel : (scope.repoRoot ? path.join(scope.repoRoot, rel) : rel))
+    : null);
+  const uploads = [];
   // Faithful to the engine triage.json shape (nested `scores`; videos carry derivedStills +
-  // per-still stillScores) so the portal Triage view renders it. ALL media paths -> basename
-  // (no engine-tree leak): file, enhanced, derivedStills[], stillScores[].{still,enhanced}.
+  // per-still stillScores) so the portal Triage view renders it. Media paths -> basename
+  // (no engine-tree leak): file/fileName, enhanced, derivedStills[], stillScores[].{still,enhanced}.
   const assets = (Array.isArray(report.assets) ? report.assets : []).map((a) => {
     const s = (a && a.scores) || {};
     const verdict = s.verdict || "use";
     if (counts[verdict] !== undefined) counts[verdict] += 1;
+    const rawFile = a && a.file;
+    const fileName = baseName(rawFile);
+    const kind = (a && a.kind) || "image";
+    const local = localFor(rawFile);
+    let storagePath = null;
+    if (fileName && local) {
+      storagePath = storageFor(fileName);
+      uploads.push({ localPath: local, storagePath });
+    }
     const out = {
-      file: baseName(a && a.file), kind: (a && a.kind) || "image",
+      file: fileName, fileName, kind,
+      storagePath,
       scores: projScores(s),
       enhanced: a && a.enhanced ? baseName(a.enhanced) : null,
     };
@@ -211,7 +231,7 @@ export function projectTriage(report, scope) {
     summary: { assetCount: assets.length, ...counts },
     humanGate: report.humanGate || null,
   };
-  return { key: submissionId, scope: { agencyId, brandId }, doc };
+  return { key: submissionId, scope: { agencyId, brandId }, doc, uploads };
 }
 
 const STRATEGY_FIELDS = ["strategyId", "submissionId", "plannedAt", "horizon", "horizonDays",

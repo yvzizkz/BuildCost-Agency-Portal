@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QueueItem, Draft, TriageReport, Strategy } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
-import { approve, reject, requestGeneration, editCaption } from '@/lib/commands';
+import { approve, reject, requestGeneration, editCaption, generateSlot } from '@/lib/commands';
 import SocialPreview from './SocialPreview';
 import TriageResults from './TriageResults';
 import StrategyView from './StrategyView';
@@ -320,7 +320,14 @@ export default function QueueCard({
           >
             {showStrategy ? 'Hide Content Strategy' : 'View Content Strategy'}
           </button>
-          {showStrategy && <StrategyView strategy={strategy} />}
+          {showStrategy && (
+            <StrategyView
+              strategy={strategy}
+              onGenerateSlot={async (slotN) => {
+                await generateSlot(agencyId, brandId, uid, strategy.submissionId || item.queueId, slotN);
+              }}
+            />
+          )}
         </div>
       )}
 

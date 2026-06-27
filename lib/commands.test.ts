@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { approve, reject, requestGeneration, ingestDropboxLink, isDropboxUrl } from './commands';
+import { approve, reject, requestGeneration, generateSlot, ingestDropboxLink, isDropboxUrl } from './commands';
 import { mockSetDoc } from '../test/firebaseMock';
 
 describe('lib/commands.ts', () => {
@@ -66,6 +66,37 @@ describe('lib/commands.ts', () => {
     it('should throw for invalid media', async () => {
       await expect(requestGeneration('agency1', 'brand1', 'user1', 'social', { media: 'card' }))
         .rejects.toThrow('Invalid media: card');
+    });
+  });
+
+  describe('generateSlot', () => {
+    it('writes a scoped generateSlot command for valid input', async () => {
+      await generateSlot('agency1', 'brand1', 'user1', 'valid-submission-id', 3);
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: 'generateSlot',
+          status: 'requested',
+          requestedByUid: 'user1',
+          payload: { submissionId: 'valid-submission-id', slotN: 3 },
+        })
+      );
+    });
+
+    it('throws for an invalid submissionId', async () => {
+      await expect(generateSlot('agency1', 'brand1', 'user1', 'bad/id', 1))
+        .rejects.toThrow('Invalid submissionId.');
+      expect(mockSetDoc).not.toHaveBeenCalled();
+    });
+
+    it('throws for a non-integer / out-of-range slot number', async () => {
+      await expect(generateSlot('agency1', 'brand1', 'user1', 'valid-id', 0))
+        .rejects.toThrow('Invalid slot number.');
+      await expect(generateSlot('agency1', 'brand1', 'user1', 'valid-id', 2.5))
+        .rejects.toThrow('Invalid slot number.');
+      await expect(generateSlot('agency1', 'brand1', 'user1', 'valid-id', 999))
+        .rejects.toThrow('Invalid slot number.');
+      expect(mockSetDoc).not.toHaveBeenCalled();
     });
   });
 

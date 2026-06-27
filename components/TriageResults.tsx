@@ -13,20 +13,24 @@ function TriageMedia({ asset }: { asset: TriageAsset }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Prefer the resolvable Storage path the bridge now mirrors; fall back to `file` for
+  // back-compat with any doc projected before storagePath existed.
+  const srcPath = asset.storagePath || asset.file;
+
   useEffect(() => {
     let active = true;
-    if (!asset.file) {
+    if (!srcPath) {
       setLoading(false);
       return;
     }
     // If it's already a URL, use it. Otherwise, assume it's a storage path.
-    if (/^https?:\/\//.test(asset.file)) {
-      setUrl(asset.file);
+    if (/^https?:\/\//.test(srcPath)) {
+      setUrl(srcPath);
       setLoading(false);
       return;
     }
 
-    getDownloadURL(ref(storage, asset.file))
+    getDownloadURL(ref(storage, srcPath))
       .then((downloadUrl) => {
         if (active) {
           setUrl(downloadUrl);
@@ -40,7 +44,7 @@ function TriageMedia({ asset }: { asset: TriageAsset }) {
     return () => {
       active = false;
     };
-  }, [asset.file]);
+  }, [srcPath]);
 
   if (loading) {
     return (
@@ -58,7 +62,7 @@ function TriageMedia({ asset }: { asset: TriageAsset }) {
     <video src={url} className="triage-media-video" preload="metadata" />
   ) : (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt={asset.file} className="triage-media-image" />
+    <img src={url} alt={asset.fileName || asset.file} className="triage-media-image" />
   );
 }
 

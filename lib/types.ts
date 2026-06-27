@@ -116,7 +116,9 @@ export interface TriageAssetScore {
 }
 
 export interface TriageAsset {
-  file: string;
+  file: string;            // basename (display / alt fallback)
+  fileName?: string;       // basename (display)
+  storagePath?: string | null; // resolvable Storage path for the source thumbnail
   kind: 'image' | 'video';
   scores: TriageAssetScore;
   enhanced?: string | null;

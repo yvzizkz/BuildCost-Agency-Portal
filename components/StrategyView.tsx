@@ -1,12 +1,32 @@
 'use client';
 
+import { useState } from 'react';
 import { Strategy, StrategySlot } from '@/lib/types';
 
 interface StrategyViewProps {
   strategy: Strategy;
+  // Fire one ready slot's generation (writes a generateSlot command). Optional: when absent,
+  // the calendar is read-only (no Generate buttons). Provided by QueueCard with brand context.
+  onGenerateSlot?: (slotN: number) => Promise<void> | void;
 }
 
-export default function StrategyView({ strategy }: StrategyViewProps) {
+type SlotGenState = 'loading' | 'done' | 'error';
+
+export default function StrategyView({ strategy, onGenerateSlot }: StrategyViewProps) {
+  const [genState, setGenState] = useState<Record<number, SlotGenState>>({});
+
+  const handleGenerate = async (slotN: number) => {
+    if (!onGenerateSlot || genState[slotN] === 'loading') return;
+    setGenState((s) => ({ ...s, [slotN]: 'loading' }));
+    try {
+      await onGenerateSlot(slotN);
+      setGenState((s) => ({ ...s, [slotN]: 'done' }));
+    } catch (e) {
+      console.error('generateSlot failed:', e);
+      setGenState((s) => ({ ...s, [slotN]: 'error' }));
+    }
+  };
+
   const {
     theme,
     objective,
@@ -145,6 +165,24 @@ export default function StrategyView({ strategy }: StrategyViewProps) {
                     {slot.sourceAsset && (
                       <div className="slot-source">
                         <strong>Source:</strong> {slot.sourceAsset}
+                      </div>
+                    )}
+                    {onGenerateSlot && slot.routeStatus === 'ready' && (
+                      <div className="slot-actions">
+                        <button
+                          type="button"
+                          className="slot-generate-btn"
+                          disabled={genState[slot.n] === 'loading'}
+                          onClick={() => handleGenerate(slot.n)}
+                        >
+                          {genState[slot.n] === 'loading'
+                            ? 'Generating…'
+                            : genState[slot.n] === 'done'
+                            ? 'Draft requested ✓'
+                            : genState[slot.n] === 'error'
+                            ? 'Failed — retry'
+                            : 'Generate draft'}
+                        </button>
                       </div>
                     )}
                   </div>

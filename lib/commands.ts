@@ -225,3 +225,41 @@ export async function requestGeneration(
   await setDoc(commandDocRef, commandData);
   return commandDocRef.id;
 }
+
+// Mirrors dispatch.mjs MAX_SLOT_N — keep in sync.
+const MAX_SLOT_N = 200;
+
+/**
+ * Fire one READY calendar slot through the engine's draft producer. The command carries
+ * only (submissionId, slotN); the bridge → engine resolves the slot's source grounding from
+ * the persisted strategy.json (the mirrored slot is basenamed, so the client can't). Engine
+ * stays draft-only and refuses Phase-2 slots — UI should only offer this on routeStatus 'ready'.
+ */
+export async function generateSlot(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  submissionId: string,
+  slotN: number
+): Promise<string> {
+  if (!QUEUE_ID_RE.test(submissionId)) {
+    throw new Error('Invalid submissionId.');
+  }
+  if (!Number.isInteger(slotN) || slotN < 1 || slotN > MAX_SLOT_N) {
+    throw new Error('Invalid slot number.');
+  }
+
+  const commandsCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'commands');
+  const commandDocRef = doc(commandsCol);
+
+  const commandData = {
+    type: 'generateSlot',
+    status: 'requested',
+    requestedByUid: uid,
+    payload: { submissionId, slotN },
+    createdAtMs: Date.now(),
+  };
+
+  await setDoc(commandDocRef, commandData);
+  return commandDocRef.id;
+}

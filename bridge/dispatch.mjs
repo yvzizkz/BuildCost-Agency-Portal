@@ -26,6 +26,7 @@ const SCRIPTS = {
   approvalFlow: ".claude/skills/approval-flow/approval_flow.py",
   studio: ".claude/skills/studio/studio.py",
   reel: ".claude/skills/asset-studio/reel.py",
+  strategyPlanner: ".claude/skills/content-strategy/strategy_planner.py",
 };
 
 const PYTHON = process.env.PORTAL_PYTHON || "python3";
@@ -38,7 +39,8 @@ const SLUG_RE = /^[a-z][a-z0-9-]{1,30}$/;
 const NOTES_MAX = 500;
 
 const GENERATORS = new Set(["social", "reel"]);
-const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration", "editCaption"]);
+const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration", "editCaption", "generateSlot"]);
+const MAX_SLOT_N = 200;   // a 30-day plan has ≤ ~30 slots; this is a generous sanity bound.
 
 // Caption editing limits. Body keeps line breaks; hashtags/CTA are single-line.
 const CAPTION_MAX = 3000;
@@ -168,6 +170,16 @@ function parseOk(stdout) {
   return { ok: true, summary: String(stdout || "").trim().split("\n").pop() || "" };
 }
 
+/** generate-slot prints a single --json result object. Parse it; fall back to a summary line. */
+function parseGenerateSlot(stdout) {
+  const txt = String(stdout || "").trim();
+  try {
+    const obj = JSON.parse(txt);
+    if (obj && typeof obj === "object") return obj;
+  } catch { /* not JSON — fall through */ }
+  return { ok: true, summary: txt.split("\n").pop() || "" };
+}
+
 /**
  * @param {{repoRoot:string, env:string, slug:string}} tenant  resolved from the tenant map
  * @param {string} type      command type (from the Firestore doc)
@@ -228,6 +240,28 @@ export function buildDispatch(tenant, type, payload = {}) {
         label: `editCaption:${slug}:${qid}`,
         argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "edit-caption", "--id", qid, "--copy-file", copyFile],
         parse: parseOk,
+      },
+    };
+  }
+
+  if (type === "generateSlot") {
+    // Fire ONE ready slot of a persisted strategy through the engine's draft producer.
+    // The bridge can't resolve the slot itself (the mirrored slot is basenamed for
+    // leak-safety), so it passes only (submissionId, slotN); the engine reads strategy.json,
+    // resolves the source grounding, and shells studio/reel in --mode draft (draft-only,
+    // refuses Phase-2 routes). No raw owner strings reach a flag — both are validated scalars.
+    const sid = String(payload.submissionId || "");
+    if (!QUEUE_ID_RE.test(sid)) return fail("generateSlot requires a valid submissionId");
+    const n = Number(payload.slotN);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_SLOT_N) return fail("generateSlot requires a slotN in 1..200");
+    return {
+      ok: true,
+      exec: {
+        ...base,
+        label: `genSlot:${slug}:${sid}#${n}`,
+        argv: [abs(SCRIPTS.strategyPlanner), "--brand", slug, "--submission-id", sid,
+          "--mode", "generate-slot", "--slot-n", String(n), "--json"],
+        parse: parseGenerateSlot,
       },
     };
   }

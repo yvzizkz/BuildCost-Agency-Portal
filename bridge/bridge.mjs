@@ -64,6 +64,7 @@ loadDotEnv(path.join(__dirname, ".env"));
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "tenants.json"), "utf8"));
 const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
 const EXEC_TIMEOUT_MS = 120_000;
+const GEN_TIMEOUT_MS = 600_000;      // generateSlot shells a real producer (image/video gen) — give it room
 const PIPELINE_TIMEOUT_MS = 240_000; // triage scores each asset via Gemini (cheap, fail-open)
 const MAX_INGEST_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB cap on a single Dropbox ingest
 
@@ -106,9 +107,9 @@ function runIntake(tenant, submissionPath, imagesDir, defaultCity) {
 }
 
 /** Run an engine invocation built by dispatch.mjs (argv array, no shell). */
-function runExec(exec) {
+function runExec(exec, timeout = EXEC_TIMEOUT_MS) {
   return new Promise((resolve) => {
-    execFile(exec.file, exec.argv, { cwd: exec.cwd, timeout: EXEC_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 },
+    execFile(exec.file, exec.argv, { cwd: exec.cwd, timeout, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => resolve({ code: err?.code ?? 0, killed: err?.killed ?? false, stdout, stderr }));
   });
 }
@@ -295,7 +296,7 @@ async function processCommand(ref, data) {
       console.warn(`[cmd] ${tenant.slug}/${ref.id} rejected: ${built.error}`);
       return;
     }
-    const r = await runExec(built.exec);
+    const r = await runExec(built.exec, data.type === "generateSlot" ? GEN_TIMEOUT_MS : EXEC_TIMEOUT_MS);
     if (r.code === 0) {
       const result = built.exec.parse(r.stdout);
       await ref.update({
@@ -469,6 +470,14 @@ async function mirrorSubCollection(coll, prevHashes, projections) {
   for (const p of projections) {
     if (prevHashes.get(p.key) === p.hash) continue;
     const { agencyId, brandId } = p.scope;
+    // Push the projection's media to Storage BEFORE the doc lands (so the client never sees a
+    // storagePath that 404s). Only on a real change (hash-gated above) and only files that
+    // exist on disk. Triage projections carry uploads[]; strategy projections don't (no-op).
+    for (const u of (p.uploads || [])) {
+      if (u.storagePath && u.localPath && fs.existsSync(u.localPath)) {
+        await bucket.upload(u.localPath, { destination: u.storagePath, resumable: false });
+      }
+    }
     await db.doc(`agencies/${agencyId}/brands/${brandId}`).collection(coll).doc(p.key).set(
       { ...p.doc, contentHash: p.hash, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     wrote += 1;
