@@ -32,6 +32,8 @@ interface QueueCardProps {
   agencyId: string;
   brandId: string;
   uid: string;
+  isSaved?: boolean;
+  onToggleSave?: () => void;
 }
 
 // The mockup formats an owner can fan out for a submission's project. Values MUST match the
@@ -47,7 +49,15 @@ const MOCKUP_FORMATS: { value: string; label: string }[] = [
   { value: 'vision', label: 'Concept render' },
 ];
 
-export default function QueueCard({ item, triageReport, agencyId, brandId, uid }: QueueCardProps) {
+export default function QueueCard({
+  item,
+  triageReport,
+  agencyId,
+  brandId,
+  uid,
+  isSaved = false,
+  onToggleSave,
+}: QueueCardProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -218,6 +228,16 @@ export default function QueueCard({ item, triageReport, agencyId, brandId, uid }
             <span className="status-badge ghl-draft" title="Pushed to the GHL Social Planner as a draft">
               ✓ GHL {item.ghlStatus}
             </span>
+          )}
+          {onToggleSave && (
+            <button
+              type="button"
+              className={`btn-save-toggle ${isSaved ? 'saved' : ''}`}
+              onClick={onToggleSave}
+              title={isSaved ? 'Remove from Saved' : 'Save for later'}
+            >
+              {isSaved ? '★' : '☆'}
+            </button>
           )}
         </div>
       </div>
