@@ -11,6 +11,7 @@ export interface BrandDoc {
   slug: string;
   displayName: string;
   status: 'active' | 'inactive' | string;
+  businessType?: string;
 }
 
 export interface QueueItem {
@@ -83,26 +84,24 @@ export interface Submission {
   createdAtMs: number;
   // Optional owner intent (intent-capture form). Absent => the bridge cold-starts 'not_sure',
   // so triage + strategy still run and produce a calendar to review.
-  motivation?: string;
-  objective?: 'awareness' | 'leads' | 'booked_jobs' | 'reviews' | string;
-  channel?: 'organic' | 'ads' | 'both' | string;
-  offer?: string;
-  mustSay?: string[];
-  horizon?: 'week' | 'month';
+  brief?: IntentBrief;
 }
 
 // --- Content pipeline read models (bridge-projected, client read-only) ----------------
 
-// The captured intent behind a submission (subset surfaced from the engine brief.json).
+// The captured intent behind a submission: written by the intake form (write side) AND
+// surfaced as a subset from the engine brief.json (read side / TriageReport). All-optional so
+// one type serves both — the form validates required fields at runtime; cold-start omits them.
 export interface IntentBrief {
+  businessType?: string;
   motivation?: string;
   suggestedMotivation?: string | null;
-  objective?: string;
-  channel?: string;
+  objective?: 'awareness' | 'leads' | 'booked_jobs' | 'reviews' | string;
+  channel?: 'organic' | 'ads' | 'both' | string;
   offer?: string;
   mustSay?: string[];
-  businessType?: string;
   audienceNote?: string;
+  mediaRights?: { ownFootage: boolean; peopleInIt: boolean };
 }
 
 export interface TriageAssetScore {

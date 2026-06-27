@@ -21,6 +21,16 @@ export default function IntakePage() {
   const [files, setFiles] = useState<File[]>([]);
   const [heroIndex, setHeroIndex] = useState<number>(0);
   const [processIndexes, setProcessIndexes] = useState<Set<number>>(new Set());
+
+  // Intent Fields
+  const [businessType, setBusinessType] = useState('unknown');
+  const [motivation, setMotivation] = useState('');
+  const [objective, setObjective] = useState<'awareness' | 'leads' | 'booked_jobs' | 'reviews'>('leads');
+  const [channel, setChannel] = useState<'organic' | 'ads' | 'both'>('organic');
+  const [offer, setOffer] = useState('');
+  const [mustSay, setMustSay] = useState('');
+  const [ownFootage, setOwnFootage] = useState(false);
+  const [peopleInIt, setPeopleInIt] = useState(false);
   
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +61,7 @@ export default function IntakePage() {
           setBrands(brandDocs);
           if (brandDocs.length > 0) {
             setSelectedBrandId(brandDocs[0].slug);
+            setBusinessType(brandDocs[0].businessType || 'unknown');
           }
         } catch (err: unknown) {
           console.error(err);
@@ -124,6 +135,10 @@ export default function IntakePage() {
       setError('Title is required.');
       return;
     }
+    if (!motivation) {
+      setError('Please select what you want us to do with this media (Motivation).');
+      return;
+    }
     if (files.length === 0) {
       setError('At least one image or video file is required.');
       return;
@@ -146,6 +161,18 @@ export default function IntakePage() {
           files,
           heroIndex,
           processIndexes: Array.from(processIndexes),
+          brief: {
+            businessType,
+            motivation,
+            objective,
+            channel,
+            offer: offer.trim() || undefined,
+            mustSay: mustSay.split(',').map(s => s.trim()).filter(s => !!s),
+            mediaRights: {
+              ownFootage,
+              peopleInIt,
+            },
+          },
         },
         setProgress
       );
@@ -157,6 +184,11 @@ export default function IntakePage() {
       setFiles([]);
       setHeroIndex(0);
       setProcessIndexes(new Set());
+      setMotivation('');
+      setOffer('');
+      setMustSay('');
+      setOwnFootage(false);
+      setPeopleInIt(false);
     } catch (err: unknown) {
       console.error(err);
       setError(friendlyError(err));
@@ -232,7 +264,14 @@ export default function IntakePage() {
                   <select
                     id="intake-brand"
                     value={selectedBrandId || ''}
-                    onChange={(e) => setSelectedBrandId(e.target.value)}
+                    onChange={(e) => {
+                      const bid = e.target.value;
+                      setSelectedBrandId(bid);
+                      const brand = brands.find(b => b.slug === bid);
+                      if (brand?.businessType) {
+                        setBusinessType(brand.businessType);
+                      }
+                    }}
                     className="brand-picker-select"
                     required
                   >
@@ -243,6 +282,134 @@ export default function IntakePage() {
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="intent-section" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', padding: '1.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                <h3 style={{ gridColumn: '1 / -1', fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Intent & Goals</h3>
+
+                <div className="form-group">
+                  <label htmlFor="intake-business-type" className="form-label">Business Type</label>
+                  <div className="select-wrapper">
+                    <select
+                      id="intake-business-type"
+                      value={businessType}
+                      onChange={(e) => setBusinessType(e.target.value)}
+                      className="brand-picker-select"
+                    >
+                      <option value="construction">Construction</option>
+                      <option value="home_services">Home Services</option>
+                      <option value="restaurant_food">Restaurant & Food</option>
+                      <option value="retail_ecom">Retail & E-commerce</option>
+                      <option value="professional_services">Professional Services</option>
+                      <option value="health_wellness">Health & Wellness</option>
+                      <option value="digital_saas">Digital / SaaS</option>
+                      <option value="creator_personal_brand">Creator / Personal Brand</option>
+                      <option value="events_hospitality">Events & Hospitality</option>
+                      <option value="local_other">Other Local Business</option>
+                      <option value="unknown">Unknown / Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="intake-motivation" className="form-label">Motivation (Required)</label>
+                  <div className="select-wrapper">
+                    <select
+                      id="intake-motivation"
+                      value={motivation}
+                      onChange={(e) => setMotivation(e.target.value)}
+                      className="brand-picker-select"
+                      required
+                    >
+                      <option value="" disabled>What should we do?</option>
+                      <option value="enhance_media">Make my photos/videos look professional</option>
+                      <option value="creative_concept">Make something creative or fun (e.g. a cartoon ad)</option>
+                      <option value="showcase_work">Show off finished work / a product / a space</option>
+                      <option value="promote_offer">Promote an offer, sale, or event</option>
+                      <option value="lead_gen_ad">Run a paid ad to get leads/customers</option>
+                      <option value="brand_awareness">Tell our story / build trust & awareness</option>
+                      <option value="not_sure">I&apos;m not sure where to start</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="intake-objective" className="form-label">Objective</label>
+                  <div className="select-wrapper">
+                    <select
+                      id="intake-objective"
+                      value={objective}
+                      onChange={(e) => setObjective(e.target.value as any)}
+                      className="brand-picker-select"
+                    >
+                      <option value="leads">Generate Leads</option>
+                      <option value="awareness">Build Awareness</option>
+                      <option value="booked_jobs">Book More Jobs</option>
+                      <option value="reviews">Get More Reviews</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="intake-channel" className="form-label">Channel</label>
+                  <div className="select-wrapper">
+                    <select
+                      id="intake-channel"
+                      value={channel}
+                      onChange={(e) => setChannel(e.target.value as any)}
+                      className="brand-picker-select"
+                    >
+                      <option value="organic">Organic Social</option>
+                      <option value="ads">Paid Ads</option>
+                      <option value="both">Both</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="intake-offer" className="form-label">Special Offer (Optional)</label>
+                  <input
+                    id="intake-offer"
+                    type="text"
+                    placeholder="e.g. 10% off for first-time customers"
+                    value={offer}
+                    onChange={(e) => setOffer(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="intake-must-say" className="form-label">Must-Say Details (Optional, comma-separated)</label>
+                  <input
+                    id="intake-must-say"
+                    type="text"
+                    placeholder="e.g. Family owned, Licensed & Insured, Serving Austin"
+                    value={mustSay}
+                    onChange={(e) => setMustSay(e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'row', gap: '2rem', marginTop: '0.5rem' }}>
+                  <label className="file-control-label">
+                    <input
+                      type="checkbox"
+                      checked={ownFootage}
+                      onChange={(e) => setOwnFootage(e.target.checked)}
+                      className="file-control-checkbox"
+                    />
+                    <span>Is this footage yours?</span>
+                  </label>
+                  <label className="file-control-label">
+                    <input
+                      type="checkbox"
+                      checked={peopleInIt}
+                      onChange={(e) => setPeopleInIt(e.target.checked)}
+                      className="file-control-checkbox"
+                    />
+                    <span>Are identifiable people in it?</span>
+                  </label>
                 </div>
               </div>
 

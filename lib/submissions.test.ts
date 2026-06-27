@@ -68,4 +68,40 @@ describe('lib/submissions.ts', () => {
       })
     );
   });
+
+  it('should include the brief object if provided', async () => {
+    const file = mockFile('1.jpg', 1024, 'image/jpeg');
+    const brief = {
+      businessType: 'construction',
+      motivation: 'showcase_work',
+      objective: 'leads' as const,
+      channel: 'organic' as const,
+      offer: 'Free quote',
+      mustSay: ['Family owned'],
+      mediaRights: { ownFootage: true, peopleInIt: false }
+    };
+
+    await uploadAndSubmit('agency1', 'brand1', 'user1', {
+      title: 'Test',
+      files: [file],
+      heroIndex: 0,
+      processIndexes: [],
+      brief
+    });
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        brief: expect.objectContaining({
+          businessType: 'construction',
+          motivation: 'showcase_work',
+          objective: 'leads',
+          channel: 'organic',
+          offer: 'Free quote',
+          mustSay: ['Family owned'],
+          mediaRights: { ownFootage: true, peopleInIt: false }
+        })
+      })
+    );
+  });
 });
