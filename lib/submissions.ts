@@ -1,6 +1,7 @@
 import { ref, uploadBytesResumable } from 'firebase/storage';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { db, storage } from './firebase';
+import { IntentBrief } from './types';
 
 // Max single-file upload. Raised from 25MB so phone videos / reels go through.
 // The Storage rule enforces the same ceiling; resumable uploads (below) make large
@@ -28,6 +29,7 @@ export interface SubmissionInput {
   files: File[];
   heroIndex: number;
   processIndexes: number[];
+  brief?: IntentBrief;
 }
 
 interface SubmissionData {
@@ -40,6 +42,7 @@ interface SubmissionData {
   note?: string;
   heroStoragePath?: string;
   processStoragePaths?: string[];
+  brief?: IntentBrief;
 }
 
 export async function uploadAndSubmit(
@@ -134,6 +137,10 @@ export async function uploadAndSubmit(
 
   if (processPaths.length > 0) {
     submissionData.processStoragePaths = processPaths;
+  }
+
+  if (input.brief) {
+    submissionData.brief = input.brief;
   }
 
   await setDoc(submissionDocRef, submissionData);

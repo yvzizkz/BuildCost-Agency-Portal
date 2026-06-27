@@ -11,6 +11,17 @@ export interface BrandDoc {
   slug: string;
   displayName: string;
   status: 'active' | 'inactive' | string;
+  businessType?: string;
+}
+
+export interface IntentBrief {
+  businessType: string;
+  motivation: string;
+  objective: 'awareness' | 'leads' | 'booked_jobs' | 'reviews';
+  channel: 'organic' | 'ads' | 'both';
+  offer?: string;
+  mustSay?: string[];
+  mediaRights: { ownFootage: boolean; peopleInIt: boolean };
 }
 
 export interface QueueItem {
@@ -81,6 +92,7 @@ export interface Submission {
   heroStoragePath?: string;
   processStoragePaths?: string[];
   createdAtMs: number;
+  brief?: IntentBrief;
 }
 
 export type CommandType =
