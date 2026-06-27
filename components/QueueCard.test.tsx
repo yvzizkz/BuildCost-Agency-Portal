@@ -28,10 +28,24 @@ describe('QueueCard', () => {
   });
 
   it('renders correctly', () => {
-    render(<QueueCard item={mockItem as any} agencyId="a1" brandId="b1" uid="u1" />);
+    render(<QueueCard item={mockItem as any} agencyId="a1" brandId="b1" uid="u1" onToggleSave={vi.fn()} />);
     expect(screen.getByText('Test Item')).toBeInTheDocument();
     expect(screen.getByText('Approve')).toBeInTheDocument();
     expect(screen.getByText('Request Revisions')).toBeInTheDocument();
+    expect(screen.getByTitle('Save for later')).toBeInTheDocument();
+  });
+
+  it('calls onToggleSave when save button is clicked', () => {
+    const onToggleSave = vi.fn();
+    render(<QueueCard item={mockItem as any} agencyId="a1" brandId="b1" uid="u1" onToggleSave={onToggleSave} />);
+    fireEvent.click(screen.getByTitle('Save for later'));
+    expect(onToggleSave).toHaveBeenCalled();
+  });
+
+  it('shows saved state correctly', () => {
+    render(<QueueCard item={mockItem as any} agencyId="a1" brandId="b1" uid="u1" isSaved={true} onToggleSave={vi.fn()} />);
+    expect(screen.getByTitle('Remove from Saved')).toBeInTheDocument();
+    expect(screen.getByText('★')).toBeInTheDocument();
   });
 
   it('calls approve when Approve button is clicked', async () => {

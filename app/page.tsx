@@ -7,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { subscribeToQueue, subscribeToTriageReports } from '@/lib/queue';
 import { requestGeneration } from '@/lib/commands';
+import { useSavedItems } from '@/lib/saved';
 import BrandPicker from '@/components/BrandPicker';
 import QueueCard from '@/components/QueueCard';
 import Link from 'next/link';
@@ -24,7 +25,8 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'review' | 'approved'>('review');
+  const [activeTab, setActiveTab] = useState<'review' | 'saved' | 'approved'>('review');
+  const { savedIds, toggleSave } = useSavedItems();
 
   useEffect(() => {
     if (profile && profile.brands && profile.brands.length > 0) {
@@ -110,11 +112,25 @@ export default function HomePage() {
   // Split the feed: the review tab shows only what needs the owner; approved posts
   // move to their own tab (history + schedule + GHL status). Rejected items have
   // been sent back for revision and drop out of both lists.
-  const reviewItems = queueItems.filter(
-    (i) => i.status !== 'approved' && i.status !== 'rejected'
-  );
+  // "Saved" items move from review to their own tab.
   const approvedItems = queueItems.filter((i) => i.status === 'approved');
-  const visibleItems = activeTab === 'review' ? reviewItems : approvedItems;
+  const rejectedItems = queueItems.filter((i) => i.status === 'rejected');
+
+  const savedItems = queueItems.filter(
+    (i) => savedIds.has(i.queueId) && i.status !== 'approved' && i.status !== 'rejected'
+  );
+
+  const reviewItems = queueItems.filter(
+    (i) =>
+      i.status !== 'approved' &&
+      i.status !== 'rejected' &&
+      !savedIds.has(i.queueId)
+  );
+
+  const visibleItems =
+    activeTab === 'review' ? reviewItems :
+    activeTab === 'saved' ? savedItems :
+    approvedItems;
 
   return (
     <div className="app-container">
@@ -198,6 +214,14 @@ export default function HomePage() {
               </button>
               <button
                 role="tab"
+                aria-selected={activeTab === 'saved'}
+                className={`queue-tab ${activeTab === 'saved' ? 'active' : ''}`}
+                onClick={() => setActiveTab('saved')}
+              >
+                Saved<span className="tab-count">{savedItems.length}</span>
+              </button>
+              <button
+                role="tab"
                 aria-selected={activeTab === 'approved'}
                 className={`queue-tab ${activeTab === 'approved' ? 'active' : ''}`}
                 onClick={() => setActiveTab('approved')}
@@ -218,6 +242,11 @@ export default function HomePage() {
                     <h3>You&apos;re all caught up</h3>
                     <p>Nothing is waiting for your review right now.</p>
                   </>
+                ) : activeTab === 'saved' ? (
+                  <>
+                    <h3>No saved items</h3>
+                    <p>Save items you want to manual verify later. They&apos;ll appear here.</p>
+                  </>
                 ) : (
                   <>
                     <h3>No approved posts yet</h3>
@@ -235,6 +264,8 @@ export default function HomePage() {
                     agencyId={profile?.agencyId || ''}
                     brandId={selectedBrandId || ''}
                     uid={user?.uid || ''}
+                    isSaved={savedIds.has(item.queueId)}
+                    onToggleSave={() => toggleSave(item.queueId)}
                   />
                 ))}
               </div>

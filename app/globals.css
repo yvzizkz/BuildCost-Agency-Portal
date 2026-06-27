@@ -425,6 +425,12 @@ body {
   color: var(--text-muted);
 }
 
+.queue-card-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .status-badge {
   font-size: 0.75rem;
   font-weight: 700;
@@ -447,6 +453,27 @@ body {
 .status-badge.status-needs-human,
 .status-badge.status-awaiting-approval {
   background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.btn-save-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+  transition: var(--transition-smooth);
+  user-select: none;
+}
+
+.btn-save-toggle:hover {
+  color: var(--text-secondary);
+  transform: scale(1.1);
+}
+
+.btn-save-toggle.saved {
   color: var(--color-warning);
 }
 
