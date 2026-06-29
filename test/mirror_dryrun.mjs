@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror } from "../bridge/mirror.mjs";
+import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror, projectMetrics, docHash } from "../bridge/mirror.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "bridge", "tenants.json"), "utf8"));
@@ -43,3 +43,22 @@ console.log(`\nfirst-pass plan: ${upserts.length} upserts, ${archives.length} ar
 console.log(`media: ${projections.reduce((n, p) => n + p.assets.length, 0)} asset refs, ` +
   `${missingMedia.length} missing on disk (would be skipped on upload)`);
 console.log(missingMedia.length || skipped ? "note: missing media/skips are tolerated, not errors." : "all assets present.");
+
+// ---- metrics-summary projection (owner dashboard) ---------------------------
+console.log("\n== metrics-summary projection (-> agencies/<a>/brands/<b>/metrics/summary) ==");
+let metricsFound = 0;
+for (const [agencyId, a] of Object.entries(TENANTS)) {
+  if (agencyId.startsWith("_") || !a?.repoRoot) continue;
+  for (const [brandId, slug] of Object.entries(a.brands || {})) {
+    if (brandId.startsWith("_") || !slug) continue;
+    const summary = readJson(path.join(a.repoRoot, "growth-assets", `metrics-summary-${slug}.json`));
+    if (!summary) { console.log(`  ${slug.padEnd(10)} (no metrics-summary file yet — aggregator not run)`); continue; }
+    const p = projectMetrics(summary, { agencyId, brandId, repoRoot: a.repoRoot, slug });
+    if (!p) { console.log(`  ${slug.padEnd(10)} (summary present but unusable — no blocks)`); continue; }
+    metricsFound++;
+    const b = p.doc.blocks || {};
+    const states = Object.entries(b).map(([k, v]) => `${k}:${v?.status}`).join(" ");
+    console.log(`  ${slug.padEnd(10)} docId:${p.docId} hash:${docHash(p.doc).slice(0, 8)}  ${states}`);
+  }
+}
+console.log(`metrics: ${metricsFound} brand snapshot(s) would upsert.`);

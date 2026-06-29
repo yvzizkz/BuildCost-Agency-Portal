@@ -1,6 +1,6 @@
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { QueueItem, Draft, TriageReport, Strategy } from './types';
+import { QueueItem, Draft, TriageReport, Strategy, MetricsSummary } from './types';
 
 // createdAt arrives as one of three shapes (Firestore Timestamp | ISO string |
 // epoch number); normalize to millis so we can sort newest-first in the client.
@@ -92,6 +92,26 @@ export function subscribeToStrategies(
         strategies[d.id] = { strategyId: d.id, ...d.data() } as Strategy;
       });
       onUpdate(strategies);
+    },
+    onError
+  );
+}
+
+// Owner dashboard: the per-brand metrics snapshot is a SINGLE well-known doc
+// (metrics/summary), so we subscribe to the doc, not the collection. `summary`
+// is null until the engine's dashboard-metrics aggregator has run for the brand —
+// the dashboard renders a "no metrics yet" state in that case.
+export function subscribeToMetrics(
+  agencyId: string,
+  brandId: string,
+  onUpdate: (summary: MetricsSummary | null) => void,
+  onError: (err: unknown) => void
+) {
+  const ref = doc(db, 'agencies', agencyId, 'brands', brandId, 'metrics', 'summary');
+  return onSnapshot(
+    ref,
+    (snap) => {
+      onUpdate(snap.exists() ? ({ id: snap.id, ...snap.data() } as MetricsSummary) : null);
     },
     onError
   );

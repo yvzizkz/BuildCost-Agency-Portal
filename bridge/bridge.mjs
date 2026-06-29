@@ -35,7 +35,7 @@ import { fileURLToPath } from "node:url";
 import admin from "firebase-admin";
 import { buildDispatch, buildSubmissionPipeline, cleanEditCopy, cleanIngestLink, isDropboxHost } from "./dispatch.mjs";
 import { resolveBrand, resolveDraftPath, projectItem, contentHash, planMirror,
-  projectTriage, projectStrategy, docHash } from "./mirror.mjs";
+  projectTriage, projectStrategy, projectMetrics, docHash } from "./mirror.mjs";
 import { driveConfigured, getAccessToken, ensureFolderPath, uploadFile } from "./drive.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -431,6 +431,7 @@ const mirrorHashes = new Map();          // queueId -> last hash
 let mirrorMeta = new Map();              // queueId -> { agencyId, brandId }
 const triageHashes = new Map();          // submissionId -> last triageReports doc hash
 const strategyHashes = new Map();        // submissionId -> last strategies doc hash
+const metricsHashes = new Map();         // "<agencyId>/<brandId>/summary" -> last metrics doc hash
 let mirrorRunning = false;
 let mirrorPending = false;
 
@@ -469,10 +470,27 @@ function submissionProjections() {
   return { triage, strategy };
 }
 
+/** Walk each agency's brands for growth-assets/metrics-summary-<slug>.json (one snapshot per brand). */
+function metricsProjections() {
+  const out = [];
+  for (const [agencyId, a] of Object.entries(TENANTS)) {
+    if (agencyId.startsWith("_") || !a || !a.repoRoot) continue;
+    for (const [brandId, slug] of Object.entries(a.brands || {})) {
+      if (brandId.startsWith("_") || !slug) continue;
+      const summary = readJson(path.join(a.repoRoot, "growth-assets", `metrics-summary-${slug}.json`));
+      if (!summary) continue;                                   // aggregator hasn't run for this brand yet
+      const p = projectMetrics(summary, { agencyId, brandId, repoRoot: a.repoRoot, slug });
+      if (p) { p.hash = docHash(p.doc); out.push(p); }
+    }
+  }
+  return out;
+}
+
 /**
- * Upsert a read-only sub-collection (triageReports / strategies), content-hash gated so we
- * write only on real change. Submissions persist on disk, so we don't archive vanished docs
- * (a stale doc is harmless and submissions aren't a client-deletable surface).
+ * Upsert a read-only sub-collection (triageReports / strategies / metrics), content-hash gated so we
+ * write only on real change. Submissions/metrics persist on disk, so we don't archive vanished docs
+ * (a stale doc is harmless and these aren't a client-deletable surface). The Firestore doc id is
+ * `p.docId` when set (e.g. the well-known "summary"), else `p.key` (the globally-unique hash key).
  */
 async function mirrorSubCollection(coll, prevHashes, projections) {
   let wrote = 0;
@@ -487,7 +505,7 @@ async function mirrorSubCollection(coll, prevHashes, projections) {
         await bucket.upload(u.localPath, { destination: u.storagePath, resumable: false });
       }
     }
-    await db.doc(`agencies/${agencyId}/brands/${brandId}`).collection(coll).doc(p.key).set(
+    await db.doc(`agencies/${agencyId}/brands/${brandId}`).collection(coll).doc(p.docId || p.key).set(
       { ...p.doc, contentHash: p.hash, mirroredAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     wrote += 1;
   }
@@ -548,6 +566,8 @@ async function runMirror() {
     const subs = submissionProjections();
     await mirrorSubCollection("triageReports", triageHashes, subs.triage);
     await mirrorSubCollection("strategies", strategyHashes, subs.strategy);
+    // Owner dashboard: mirror the per-brand metrics-summary snapshot (content-hash gated).
+    await mirrorSubCollection("metrics", metricsHashes, metricsProjections());
 
     // roll forward the in-memory state to exactly what's in the queue now
     mirrorHashes.clear();
@@ -578,8 +598,12 @@ function startMirror() {
   for (const repo of agencyRepos()) {
     const dir = path.dirname(repo.queuePath);
     try {
-      // watch the DIR (atomic os.replace swaps the inode, so watching the file alone misses updates)
-      fs.watch(dir, (_evt, fname) => { if (!fname || fname === "review-queue.json") kick(); });
+      // watch the DIR (atomic os.replace swaps the inode, so watching the file alone misses updates).
+      // Kick on the review queue OR a refreshed metrics-summary-<slug>.json (dashboard freshness);
+      // the !fname case (platform gave no name) still kicks. The poll below is the catch-all.
+      fs.watch(dir, (_evt, fname) => {
+        if (!fname || fname === "review-queue.json" || fname.startsWith("metrics-summary-")) kick();
+      });
     } catch (e) {
       console.warn(`[mirror] cannot watch ${dir} (${e?.message}); relying on poll`);
     }

@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 const QUEUE_FIELDS = [
   "queueId", "business", "type", "summary", "action", "publishCommand", "estMinutes",
   "status", "createdAt", "approvedAt", "rejectedAt", "revisionNotes", "ghlPostId",
-  "ghlStatus", "scheduleDate", "pushedAt", "projectId", "source",
+  "ghlStatus", "scheduleDate", "pushedAt", "projectId", "source", "targetChannels",
 ];
 // Draft fields surfaced to the portal (critique/campaignPlan/motionPrompt are
 // bulky internal reasoning — intentionally omitted; copy/QA are what owners review).
@@ -257,6 +257,28 @@ export function projectStrategy(strategy, scope) {
     agencyId, brandId, brand: strategy.brand || scope.slug || null, slots,
   };
   return { key, scope: { agencyId, brandId }, doc };
+}
+
+// --------------------------------------------------------------------------- //
+// Owner dashboard — metrics-summary-<slug>.json read-projection (engine -> Firestore).
+// The engine's dashboard-metrics skill already composes ONE schema-versioned,
+// client-safe snapshot per brand (CRM funnel, GSC rankings, engagement, gen-spend,
+// + honest status stubs), so this is a near-passthrough — no media, no path leaks.
+// One snapshot per brand -> a single well-known `metrics/summary` doc. The hash
+// KEY is brand-scoped (the metricsHashes map is global) while the doc id stays
+// "summary" via `docId`. Feeds the read-only `metrics` collection; client read-only.
+// --------------------------------------------------------------------------- //
+const METRICS_FIELDS = ["schemaVersion", "brand", "displayName", "generatedAt", "blocks"];
+
+/** Project one metrics-summary-<slug>.json into a client-safe metrics doc; null if unusable. */
+export function projectMetrics(summary, scope) {
+  if (!summary || typeof summary !== "object" || !summary.blocks) return null;
+  const { agencyId, brandId } = scope;
+  const doc = {
+    ...pick(summary, METRICS_FIELDS),
+    agencyId, brandId, brand: summary.brand || scope.slug || null,
+  };
+  return { key: `${agencyId}/${brandId}/summary`, docId: "summary", scope: { agencyId, brandId }, doc };
 }
 
 /** Stable content hash over a projected doc (so the worker writes only on real change). */
