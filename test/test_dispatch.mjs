@@ -5,13 +5,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDispatch, cleanEditCopy, cleanIngestLink, isDropboxHost } from "../bridge/dispatch.mjs";
+import { buildDispatch, buildSubmissionPipeline, cleanEditCopy, cleanIngestLink, isDropboxHost } from "../bridge/dispatch.mjs";
 
 const TENANT = { repoRoot: "/repo", env: "/repo/.env", slug: "saddlewood" };
 const REPO = "/repo";
 const APPROVAL = REPO + "/.claude/skills/approval-flow/approval_flow.py";
 const STUDIO = REPO + "/.claude/skills/studio/studio.py";
 const REEL = REPO + "/.claude/skills/asset-studio/reel.py";
+const TRIAGE = REPO + "/.claude/skills/submission-triage/triage.py";
 
 // ---- approve ----------------------------------------------------------------
 test("approve builds the exact approval_flow argv", () => {
@@ -260,4 +261,35 @@ test("NO valid dispatch can emit a send/publish/spend path", () => {
       );
     }
   }
+});
+
+// ---- buildSubmissionPipeline (post-intake triage -> strategy) ----------------
+test("submission pipeline targets triage --from-project + strategy, draft-only", () => {
+  const r = buildSubmissionPipeline(TENANT, "sub-123", "steel-frame-job", {});
+  assert.ok(r.ok);
+  assert.equal(r.triage.argv[0], TRIAGE);
+  assert.ok(r.triage.argv.includes("--from-project") && r.triage.argv.includes("steel-frame-job"));
+  assert.ok(r.triage.argv.includes("--mode") && r.triage.argv.includes("triage"));
+  // no spend/publish path: triage runs without --enhance, strategy without --enrich
+  const joined = r.triage.argv.concat(r.strategy.argv).join(" ");
+  for (const f of ["--enhance", "--enrich", "--confirm", "activate", "publish", "send", "--yes"]) {
+    assert.ok(!joined.includes(f), `pipeline argv must not contain "${f}": ${joined}`);
+  }
+});
+
+test("submission pipeline forwards mediaRights as --own-footage / --people flags", () => {
+  const r = buildSubmissionPipeline(TENANT, "sub-9", "job-x", {
+    mediaRights: { ownFootage: true, peopleInIt: true },
+  });
+  assert.ok(r.ok);
+  assert.ok(r.triage.argv.includes("--own-footage"), "ownFootage true -> --own-footage");
+  assert.ok(r.triage.argv.includes("--people"), "peopleInIt true -> --people");
+});
+
+test("submission pipeline omits rights flags when false / absent", () => {
+  const off = buildSubmissionPipeline(TENANT, "sub-9", "job-x", { mediaRights: { ownFootage: false, peopleInIt: false } });
+  assert.ok(off.ok);
+  assert.ok(!off.triage.argv.includes("--own-footage") && !off.triage.argv.includes("--people"));
+  const none = buildSubmissionPipeline(TENANT, "sub-9", "job-x", {});
+  assert.ok(!none.triage.argv.includes("--own-footage") && !none.triage.argv.includes("--people"));
 });

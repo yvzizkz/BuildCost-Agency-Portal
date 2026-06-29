@@ -37,6 +37,7 @@ import sys
 from datetime import datetime, timezone
 
 ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
+ALLOWED_VIDEO_EXTS = {".mp4", ".mov", ".webm", ".m4v"}
 
 
 def _slugify(text: str) -> str:
@@ -48,6 +49,11 @@ def _slugify(text: str) -> str:
 def _safe_ext(filename: str) -> str:
     ext = os.path.splitext(filename or "")[1].lower()
     return ext if ext in ALLOWED_IMAGE_EXTS else ".jpg"
+
+
+def _safe_video_ext(filename: str) -> str:
+    ext = os.path.splitext(filename or "")[1].lower()
+    return ext if ext in ALLOWED_VIDEO_EXTS else ".mp4"
 
 
 def _now_iso() -> str:
@@ -117,7 +123,15 @@ def main(argv=None) -> int:
     # Keep only real image files (defense-in-depth; the bridge already filters).
     images_in = [im for im in images_in if os.path.splitext(im["file"])[1].lower() in ALLOWED_IMAGE_EXTS]
     if not images_in:
-        return _fail("submission %s has no image files" % submission_id, asj)
+        # A reference project is anchored on a hero photo; a video-only submission can't form one.
+        return _fail("submission %s has no image files (a hero photo is required to create a reference project)"
+                     % submission_id, asj)
+
+    # Videos are ADDITIVE — they enrich a project (triage extracts stills + scores them) but never
+    # anchor the hero. Defense-in-depth: keep only real video files (the bridge already filters).
+    videos_in = sub.get("videos") or []
+    videos_in = [v for v in videos_in if isinstance(v, dict) and v.get("file")]
+    videos_in = [v for v in videos_in if os.path.splitext(v["file"])[1].lower() in ALLOWED_VIDEO_EXTS]
 
     neighborhood = (sub.get("neighborhood") or "").strip() or (args.default_city or "").strip()
     story = (sub.get("story") or "").strip()
@@ -183,6 +197,22 @@ def main(argv=None) -> int:
     gallery = [r for r in gallery if not (r in seen or seen.add(r))] or [hero_rel]
     process_images = [r for r, proc in zip(rels, process_flags) if proc]
 
+    # --- copy videos into reference/videos/ (additive media; same naming discipline as images) ---
+    video_rels = []  # relative "videos/<file>" paths
+    if videos_in:
+        videos_dir = os.path.join(reference_dir, "videos")
+        os.makedirs(videos_dir, exist_ok=True)
+        for vidx, v in enumerate(videos_in):
+            vsrc = v["file"]
+            if not os.path.isabs(vsrc):
+                vsrc = os.path.join(args.images_dir, vsrc)  # bridge downloads images + videos to one dir
+            if not os.path.isfile(vsrc):
+                return _fail("video not found for submission %s: %s" % (submission_id, vsrc), asj)
+            vname_base = _slugify("%s-%s-vid-%s" % (slug, submission_id, vidx)) or ("vid-%d" % vidx)
+            vdest_name = vname_base + _safe_video_ext(os.path.basename(v["file"]))
+            shutil.copyfile(vsrc, os.path.join(videos_dir, vdest_name))
+            video_rels.append("videos/%s" % vdest_name)
+
     # --- build the producer-ready record (status: pending → enrich on confirm) ---
     record = {
         "id": project_id,
@@ -202,6 +232,8 @@ def main(argv=None) -> int:
     }
     if process_images:
         record["processImages"] = process_images
+    if video_rels:
+        record["videos"] = video_rels
 
     # --- write projects.json under a lock (read-modify-write of a shared file) ---
     with brandlib.state_lock(projects_path):
@@ -238,8 +270,8 @@ def main(argv=None) -> int:
             "queueId": queue_id,
             "business": slug,
             "type": "intake",
-            "summary": "[intake] portal submission '%s' for %s — confirm title/neighborhood + add scope/materials/details"
-                       % (title, slug),
+            "summary": "[intake] portal submission '%s' for %s%s — confirm title/neighborhood + add scope/materials/details"
+                       % (title, slug, (" (+%d video)" % len(video_rels)) if video_rels else ""),
             "action": "Confirm + enrich the new reference project (scope/materials/signatureDetails) so producers can feature it",
             "link": os.path.abspath(projects_path),
             "publishCommand": None,
@@ -260,6 +292,7 @@ def main(argv=None) -> int:
         "heroImage": record["heroImage"],
         "galleryCount": len(record["galleryImages"]),
         "processCount": len(process_images),
+        "videoCount": len(video_rels),
         "queueId": queue_id,
         "projectsPath": os.path.abspath(projects_path),
     }
@@ -267,8 +300,9 @@ def main(argv=None) -> int:
         print(json.dumps(result))
     else:
         print("portal-intake: ingested submission %s as project '%s' "
-              "(%d gallery, %d process); queued '%s' for confirm/enrich"
-              % (submission_id, record["id"], result["galleryCount"], result["processCount"], queue_id))
+              "(%d gallery, %d process, %d video); queued '%s' for confirm/enrich"
+              % (submission_id, record["id"], result["galleryCount"], result["processCount"],
+                 result["videoCount"], queue_id))
     return 0
 
 

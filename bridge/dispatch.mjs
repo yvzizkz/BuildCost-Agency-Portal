@@ -367,6 +367,11 @@ export function buildSubmissionPipeline(tenant, submissionId, projectId, intent 
       if (v) triageArgv.push("--must-say", v);
     }
   }
+  // Media-rights flags (the intent-capture form writes brief.mediaRights = {ownFootage, peopleInIt}).
+  // These are store_true flags on triage.py — no owner string reaches a flag, just two booleans.
+  const rights = (intent.mediaRights && typeof intent.mediaRights === "object") ? intent.mediaRights : {};
+  if (rights.ownFootage === true) triageArgv.push("--own-footage");
+  if (rights.peopleInIt === true) triageArgv.push("--people");
 
   const strategyArgv = [abs(PIPELINE_SCRIPTS.strategy), "--brand", slug,
     "--submission-id", submissionId, "--horizon", horizon, "--mode", "write"];

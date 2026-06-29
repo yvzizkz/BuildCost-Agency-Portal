@@ -37,6 +37,12 @@ class IntakeCase(unittest.TestCase):
             with open(os.path.join(self.images_dir, n), "wb") as f:
                 f.write(JPEG)
 
+    def write_videos(self, *names):
+        # The bridge downloads images AND videos into one dir (--images-dir); mirror that here.
+        for n in names:
+            with open(os.path.join(self.images_dir, n), "wb") as f:
+                f.write(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00")  # minimal mp4 header bytes
+
     def _ingest(self, submission, expect_ok=True):
         sp = os.path.join(self.sandbox, "submission.json")
         with open(sp, "w") as f:
@@ -114,6 +120,38 @@ class IntakeCase(unittest.TestCase):
         rec = self.projects()[0]
         self.assertTrue(rec["heroImage"].endswith("-2.jpg"))
         self.assertEqual(rec["galleryImages"][0], rec["heroImage"])  # hero first
+
+    def test_video_attaches_to_project_and_is_copied(self):
+        self.write_images("a.jpg")
+        self.write_videos("walkthrough.mp4")
+        _, res = self._ingest({
+            "submissionId": "s8", "title": "Steel Frame Job", "neighborhood": "Paradise Valley, AZ",
+            "images": [{"file": "a.jpg"}], "videos": [{"file": "walkthrough.mp4"}],
+        })
+        self.assertEqual(res["status"], "ingested")
+        self.assertEqual(res["videoCount"], 1)
+        rec = self.projects()[0]
+        self.assertEqual(len(rec.get("videos", [])), 1)
+        self.assertTrue(rec["videos"][0].startswith("videos/"))
+        self.assertTrue(rec["videos"][0].endswith(".mp4"))
+        # the file was actually copied into reference/videos/
+        self.assertTrue(os.path.isfile(os.path.join(self.sandbox, "reference", rec["videos"][0])))
+        # hero/gallery still anchored on the photo (video is additive, never the hero)
+        self.assertTrue(rec["heroImage"].endswith(".jpg"))
+
+    def test_no_videos_means_no_videos_key(self):
+        self.write_images("a.jpg")
+        _, res = self._ingest({"submissionId": "s8b", "title": "Photo Only",
+                               "images": [{"file": "a.jpg"}]})
+        self.assertEqual(res["videoCount"], 0)
+        self.assertNotIn("videos", self.projects()[0])
+
+    def test_video_only_still_requires_a_hero_photo(self):
+        self.write_videos("only.mp4")
+        code, res = self._ingest({"submissionId": "s8c", "title": "Video Only",
+                                  "images": [], "videos": [{"file": "only.mp4"}]}, expect_ok=False)
+        self.assertNotEqual(code, 0)               # honest rejection, NOT a silent drop
+        self.assertIn("image", res["error"].lower())
 
     def test_enrich_fields_pass_through_when_provided(self):
         self.write_images("a.jpg")

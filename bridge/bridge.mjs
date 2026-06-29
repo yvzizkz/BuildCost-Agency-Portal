@@ -63,6 +63,7 @@ loadDotEnv(path.join(__dirname, ".env"));
 
 const TENANTS = JSON.parse(fs.readFileSync(path.join(__dirname, "tenants.json"), "utf8"));
 const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
+const ALLOWED_VIDEO_EXTS = new Set([".mp4", ".mov", ".webm", ".m4v"]);
 const EXEC_TIMEOUT_MS = 120_000;
 const GEN_TIMEOUT_MS = 600_000;      // generateSlot shells a real producer (image/video gen) — give it room
 const PIPELINE_TIMEOUT_MS = 240_000; // triage scores each asset via Gemini (cheap, fail-open)
@@ -153,18 +154,25 @@ async function processSubmission(ref, data) {
     const processSet = new Set(Array.isArray(data.processStoragePaths) ? data.processStoragePaths : []);
 
     const images = [];
+    const videos = [];
     let heroIndex = 0;
     for (let i = 0; i < storagePaths.length; i++) {
       const sp = storagePaths[i];
       const ext = path.extname(sp).toLowerCase();
-      if (!ALLOWED_IMAGE_EXTS.has(ext)) continue; // images only for reference projects
+      const isImage = ALLOWED_IMAGE_EXTS.has(ext);
+      const isVideo = ALLOWED_VIDEO_EXTS.has(ext);
+      if (!isImage && !isVideo) continue; // reference projects accept photos + videos
       const local = path.join(tmpDir, `${i}-${sanitizeName(path.basename(sp))}`);
       await bucket.file(sp).download({ destination: local });
-      if (sp === heroPath) heroIndex = images.length;
-      images.push({ file: path.basename(local), process: processSet.has(sp) });
+      if (isVideo) {
+        videos.push({ file: path.basename(local) }); // videos enrich a project; they don't anchor the hero
+      } else {
+        if (sp === heroPath) heroIndex = images.length;
+        images.push({ file: path.basename(local), process: processSet.has(sp) });
+      }
     }
-    if (!images.length) {
-      await ref.update({ status: "error", error: "no image files in submission" });
+    if (!images.length && !videos.length) {
+      await ref.update({ status: "error", error: "no media files in submission" });
       return;
     }
 
@@ -177,6 +185,7 @@ async function processSubmission(ref, data) {
       submittedAt: data.submittedAt || new Date(data.createdAtMs || 0).toISOString(),
       heroIndex,
       images,
+      videos,
       // enrich-later structured fields (empty in the dead-simple model)
       scope: Array.isArray(data.scope) ? data.scope : [],
       materials: Array.isArray(data.materials) ? data.materials : [],
