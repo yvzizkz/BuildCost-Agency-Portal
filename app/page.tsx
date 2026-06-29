@@ -8,9 +8,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { subscribeToQueue, subscribeToTriageReports, subscribeToStrategies } from '@/lib/queue';
 import { requestGeneration } from '@/lib/commands';
 import { useSavedItems } from '@/lib/saved';
-import BrandPicker from '@/components/BrandPicker';
 import QueueCard from '@/components/QueueCard';
-import Link from 'next/link';
+import Sidebar from '@/components/Sidebar';
 import { friendlyError } from '@/lib/utils';
 
 export default function HomePage() {
@@ -22,7 +21,7 @@ export default function HomePage() {
   const [strategies, setStrategies] = useState<Record<string, Strategy>>({});
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingQueue, setLoadingQueue] = useState(false);
-  
+
   const [error, setError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -126,7 +125,6 @@ export default function HomePage() {
   // been sent back for revision and drop out of both lists.
   // "Saved" items move from review to their own tab.
   const approvedItems = queueItems.filter((i) => i.status === 'approved');
-  const rejectedItems = queueItems.filter((i) => i.status === 'rejected');
 
   const savedItems = queueItems.filter(
     (i) => savedIds.has(i.queueId) && i.status !== 'approved' && i.status !== 'rejected'
@@ -144,148 +142,133 @@ export default function HomePage() {
     activeTab === 'saved' ? savedItems :
     approvedItems;
 
-  return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1 className="brand-title">BuildCost Agency Portal</h1>
-        <nav className="header-nav">
-          <Link href="/" className="nav-link active">
-            Queue Feed
-          </Link>
-          <Link href="/intake" className="nav-link">
-            Media Intake
-          </Link>
-          {user && (
-            <div className="user-badge">
-              <span>{user.email}</span>
-              <button onClick={signOut} className="btn-signout">
-                Sign Out
-              </button>
-            </div>
-          )}
-        </nav>
-      </header>
+  const selectedBrand = brands.find((b) => b.slug === selectedBrandId) || null;
 
-      <main>
-        {loadingBrands ? (
-          <div className="auth-loading-container">
-            <div className="spinner"></div>
-            <p>Syncing brand permissions...</p>
+  const tabs: { key: 'review' | 'saved' | 'approved'; label: string; count: number }[] = [
+    { key: 'review', label: 'Needs Review', count: reviewItems.length },
+    { key: 'saved', label: 'Saved', count: savedItems.length },
+    { key: 'approved', label: 'Approved & Scheduled', count: approvedItems.length },
+  ];
+  const headTitle =
+    activeTab === 'review' ? 'Needs Review' :
+    activeTab === 'saved' ? 'Saved' : 'Approved & Scheduled';
+
+  return (
+    <div className="app-shell">
+      <Sidebar
+        brands={brands}
+        selectedBrandId={selectedBrandId}
+        onSelectBrand={(bid) => setSelectedBrandId(bid)}
+        email={user?.email}
+        onSignOut={signOut}
+        active={activeTab}
+        onTab={setActiveTab}
+        counts={{ review: reviewItems.length, saved: savedItems.length, approved: approvedItems.length }}
+      />
+
+      <main className="nf-main">
+        <div className="nf-feed-head">
+          <h1 className="nf-feed-title">{headTitle}</h1>
+          <p className="nf-feed-sub">
+            {selectedBrand ? selectedBrand.displayName : 'Select a brand to see its content'}
+          </p>
+          <div className="queue-tabs" role="tablist">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={activeTab === t.key}
+                className={`queue-tab ${activeTab === t.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(t.key)}
+              >
+                {t.label}
+                <span className="tab-count">{t.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <div className="feed-container">
+            <div className="error-banner">{error}</div>
+          </div>
+        )}
+
+        {loadingBrands || loadingQueue ? (
+          <div className="feed-container">
+            <div className="nf-skeleton" />
+            <div className="nf-skeleton" />
+            <div className="nf-skeleton" />
+          </div>
+        ) : visibleItems.length === 0 ? (
+          <div className="empty-state">
+            {activeTab === 'review' ? (
+              <>
+                <h3>You&apos;re all caught up</h3>
+                <p>Nothing is waiting for your review right now.</p>
+              </>
+            ) : activeTab === 'saved' ? (
+              <>
+                <h3>No saved items</h3>
+                <p>Save items you want to manually verify later. They&apos;ll appear here.</p>
+              </>
+            ) : (
+              <>
+                <h3>No approved posts yet</h3>
+                <p>Posts you approve will move here, with their schedule date and GoHighLevel status.</p>
+              </>
+            )}
           </div>
         ) : (
-          <>
-            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              <div style={{ flex: '1 1 300px' }}>
-                <BrandPicker
-                  brands={brands}
-                  selectedBrandId={selectedBrandId}
-                  onChange={(bid) => setSelectedBrandId(bid)}
-                />
-              </div>
-
-              {selectedBrandId && (
-                <div className="generation-panel" style={{ flex: '2 1 400px' }}>
-                  <div className="generation-panel-header">
-                    <span className="generation-panel-title">Content Generator</span>
-                    {generating && <div className="mini-spinner"></div>}
-                  </div>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Trigger AI generation engines directly. Created drafts will appear in the queue feed below.
-                  </p>
-                  <div className="generation-actions">
-                    <button
-                      className="btn-secondary"
-                      disabled={generating}
-                      onClick={() => handleGenerate('social')}
-                    >
-                      Generate Social Post
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      disabled={generating}
-                      onClick={() => handleGenerate('reel')}
-                    >
-                      Generate Reel Video
-                    </button>
-                  </div>
-                  {genSuccess && <div className="success-banner" style={{ marginTop: '0.5rem' }}>{genSuccess}</div>}
-                </div>
-              )}
-            </div>
-
-            {error && <div className="error-banner" style={{ marginBottom: '1.5rem' }}>{error}</div>}
-
-            <div className="queue-tabs" role="tablist">
-              <button
-                role="tab"
-                aria-selected={activeTab === 'review'}
-                className={`queue-tab ${activeTab === 'review' ? 'active' : ''}`}
-                onClick={() => setActiveTab('review')}
-              >
-                Needs Review<span className="tab-count">{reviewItems.length}</span>
-              </button>
-              <button
-                role="tab"
-                aria-selected={activeTab === 'saved'}
-                className={`queue-tab ${activeTab === 'saved' ? 'active' : ''}`}
-                onClick={() => setActiveTab('saved')}
-              >
-                Saved<span className="tab-count">{savedItems.length}</span>
-              </button>
-              <button
-                role="tab"
-                aria-selected={activeTab === 'approved'}
-                className={`queue-tab ${activeTab === 'approved' ? 'active' : ''}`}
-                onClick={() => setActiveTab('approved')}
-              >
-                Approved &amp; Scheduled<span className="tab-count">{approvedItems.length}</span>
-              </button>
-            </div>
-
-            {loadingQueue ? (
-              <div style={{ textAlign: 'center', padding: '3rem' }}>
-                <div className="spinner"></div>
-                <p>Loading queue…</p>
-              </div>
-            ) : visibleItems.length === 0 ? (
-              <div className="empty-state">
-                {activeTab === 'review' ? (
-                  <>
-                    <h3>You&apos;re all caught up</h3>
-                    <p>Nothing is waiting for your review right now.</p>
-                  </>
-                ) : activeTab === 'saved' ? (
-                  <>
-                    <h3>No saved items</h3>
-                    <p>Save items you want to manual verify later. They&apos;ll appear here.</p>
-                  </>
-                ) : (
-                  <>
-                    <h3>No approved posts yet</h3>
-                    <p>Posts you approve will move here, with their schedule date and GoHighLevel status.</p>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="feed-container">
-                {visibleItems.map((item) => (
-                  <QueueCard
-                    key={item.queueId}
-                    item={item}
-                    triageReport={triageReports[item.queueId]}
-                    strategy={strategies[item.queueId]}
-                    agencyId={profile?.agencyId || ''}
-                    brandId={selectedBrandId || ''}
-                    uid={user?.uid || ''}
-                    isSaved={savedIds.has(item.queueId)}
-                    onToggleSave={() => toggleSave(item.queueId)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
+          <div className="feed-container">
+            {visibleItems.map((item) => (
+              <QueueCard
+                key={item.queueId}
+                item={item}
+                triageReport={triageReports[item.queueId]}
+                strategy={strategies[item.queueId]}
+                agencyId={profile?.agencyId || ''}
+                brandId={selectedBrandId || ''}
+                uid={user?.uid || ''}
+                isSaved={savedIds.has(item.queueId)}
+                onToggleSave={() => toggleSave(item.queueId)}
+              />
+            ))}
+          </div>
         )}
       </main>
+
+      <aside className="nf-rail">
+        <div className="nf-rail-title">Content Generator</div>
+        {selectedBrandId ? (
+          <div className="generation-panel">
+            <div className="generation-panel-header">
+              <span className="generation-panel-title">Generate content</span>
+              {generating && <div className="mini-spinner"></div>}
+            </div>
+            <p className="nf-feed-sub">Trigger an AI engine directly — new drafts land in the feed.</p>
+            <div className="generation-actions">
+              <button className="btn-secondary" disabled={generating} onClick={() => handleGenerate('social')}>
+                Generate Social Post
+              </button>
+              <button className="btn-secondary" disabled={generating} onClick={() => handleGenerate('reel')}>
+                Generate Reel Video
+              </button>
+            </div>
+            {genSuccess && <div className="success-banner">{genSuccess}</div>}
+          </div>
+        ) : (
+          <p className="nf-feed-sub">Select a brand to generate content.</p>
+        )}
+
+        <div className="nf-rail-title">This brand</div>
+        <div className="nf-stat-grid">
+          <div className="nf-stat"><b>{reviewItems.length}</b><span>Needs review</span></div>
+          <div className="nf-stat"><b>{approvedItems.length}</b><span>Approved</span></div>
+          <div className="nf-stat"><b>{savedItems.length}</b><span>Saved</span></div>
+          <div className="nf-stat"><b>{queueItems.length}</b><span>Total in queue</span></div>
+        </div>
+      </aside>
     </div>
   );
 }
