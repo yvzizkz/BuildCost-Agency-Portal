@@ -34,28 +34,40 @@ function platformsFor(type: string): { list: Platform[]; def: Platform } {
   return { list: ['instagram', 'facebook', 'story', 'reels', 'gbp'], def: 'instagram' };
 }
 
-function useAssetUrls(assets: DraftAsset[] | undefined): (string | null)[] {
+function useAssetUrls(assets: DraftAsset[] | undefined): { urls: (string | null)[]; ready: boolean } {
   const [urls, setUrls] = useState<(string | null)[]>([]);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     let active = true;
+    setReady(false);
     if (!assets || assets.length === 0) {
       setUrls([]);
+      setReady(true);
       return;
     }
     Promise.all(
       assets.map((a) =>
         /^https?:\/\//.test(a.storagePath)
           ? Promise.resolve(a.storagePath)
-          : getDownloadURL(ref(storage, a.storagePath)).catch(() => null)
+          : getDownloadURL(ref(storage, a.storagePath)).catch((err) => {
+              // A 404 here means the bridge hasn't finished uploading this asset yet
+              // (large reel MP4s upload via a resumable session). Log it so a blank
+              // frame is diagnosable instead of an infinite, unexplained spinner.
+              console.error(`[media] could not resolve ${a.storagePath}:`, err?.code || err?.message || err);
+              return null;
+            })
       )
     ).then((res) => {
-      if (active) setUrls(res);
+      if (active) {
+        setUrls(res);
+        setReady(true);
+      }
     });
     return () => {
       active = false;
     };
   }, [assets]);
-  return urls;
+  return { urls, ready };
 }
 
 function handleFrom(name: string): string {
@@ -101,19 +113,28 @@ interface MediaFrameProps {
   idx: number;
   setIdx: (n: number) => void;
   fit?: 'cover' | 'contain';
+  ready?: boolean;
 }
 
-function MediaFrame({ aspect, url, asset, count, idx, setIdx, fit = 'cover' }: MediaFrameProps) {
+function MediaFrame({ aspect, url, asset, count, idx, setIdx, fit = 'cover', ready }: MediaFrameProps) {
   const isVideo = asset?.kind === 'video';
   return (
     <div className="sp-frame" style={{ aspectRatio: aspect }}>
-      {!url ? (
-        <div className="sp-frame-loading"><div className="mini-spinner" /></div>
-      ) : isVideo ? (
-        <video src={url} controls playsInline className="sp-media" style={{ objectFit: fit }} />
+      {url ? (
+        isVideo ? (
+          <video src={url} controls playsInline preload="metadata" className="sp-media" style={{ objectFit: fit }} />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={asset?.fileName || 'post media'} className="sp-media" style={{ objectFit: fit }} />
+        )
+      ) : ready ? (
+        // URL resolution finished but there's no URL — the asset isn't in Storage yet
+        // (usually a reel still uploading). Show a clear state, not a forever-spinner.
+        <div className="sp-frame-loading sp-frame-msg">
+          {isVideo ? 'Video still processing — check back in a moment.' : 'Media unavailable.'}
+        </div>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={asset?.fileName || 'post media'} className="sp-media" style={{ objectFit: fit }} />
+        <div className="sp-frame-loading"><div className="mini-spinner" /></div>
       )}
       {count > 1 && (
         <>
@@ -179,7 +200,7 @@ export default function SocialPreview({
   const { list, def } = platformsFor(item.type);
   const [platform, setPlatform] = useState<Platform>(def);
   const [idx, setIdx] = useState(0);
-  const urls = useAssetUrls(draft.assets);
+  const { urls, ready } = useAssetUrls(draft.assets);
 
   const assets = draft.assets || [];
   const count = assets.length;
@@ -191,7 +212,7 @@ export default function SocialPreview({
   const { body, hashtags, cta } = captionParts(draft);
 
   const frame = (aspect: string, fit: 'cover' | 'contain' = 'cover') => (
-    <MediaFrame aspect={aspect} url={url} asset={asset} count={count} idx={safeIdx} setIdx={setIdx} fit={fit} />
+    <MediaFrame aspect={aspect} url={url} ready={ready} asset={asset} count={count} idx={safeIdx} setIdx={setIdx} fit={fit} />
   );
 
   return (

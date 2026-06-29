@@ -439,6 +439,16 @@ function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
 }
 
+// Upload a local file to Cloud Storage. Large files (reel MP4s are 10-15MB) MUST use a
+// resumable upload — a single-request (resumable:false) upload fails/times out on them,
+// which left reels un-mirrored and the portal's <video> stuck on a spinner ("videos missing").
+// Small images stay single-request (no resumable-session overhead). 5MB is the GCS threshold.
+async function uploadToStorage(localPath, destination) {
+  let big = true;
+  try { big = fs.statSync(localPath).size > 5 * 1024 * 1024; } catch { /* default to resumable */ }
+  await bucket.upload(localPath, { destination, resumable: big });
+}
+
 function agencyRepos() {
   return Object.entries(TENANTS)
     .filter(([id, a]) => !id.startsWith("_") && a && a.repoRoot)
@@ -502,7 +512,7 @@ async function mirrorSubCollection(coll, prevHashes, projections) {
     // exist on disk. Triage projections carry uploads[]; strategy projections don't (no-op).
     for (const u of (p.uploads || [])) {
       if (u.storagePath && u.localPath && fs.existsSync(u.localPath)) {
-        await bucket.upload(u.localPath, { destination: u.storagePath, resumable: false });
+        await uploadToStorage(u.localPath, u.storagePath);
       }
     }
     await db.doc(`agencies/${agencyId}/brands/${brandId}`).collection(coll).doc(p.docId || p.key).set(
@@ -541,7 +551,7 @@ async function runMirror() {
       // push media to Storage (only files that exist on disk)
       for (const a of p.assets) {
         if (a.storagePath && a.localPath && fs.existsSync(a.localPath)) {
-          await bucket.upload(a.localPath, { destination: a.storagePath, resumable: false });
+          await uploadToStorage(a.localPath, a.storagePath);
         }
       }
       const brandRef = db.doc(`agencies/${agencyId}/brands/${brandId}`);
