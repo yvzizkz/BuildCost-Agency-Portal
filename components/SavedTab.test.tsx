@@ -61,8 +61,8 @@ describe('Saved Tab Logic', () => {
     // Wait for loading to finish
     await waitFor(() => expect(screen.queryByText('Syncing brand permissions...')).not.toBeInTheDocument());
 
-    // Initially should be in Needs Review
-    expect(screen.getByText('Needs Review')).toBeInTheDocument();
+    // Initially should be in Needs Review (heading — "Needs Review" also appears as a tab label)
+    expect(screen.getByRole('heading', { name: 'Needs Review' })).toBeInTheDocument();
     expect(screen.getByText('Item 1')).toBeInTheDocument();
     expect(screen.getByText('Item 2')).toBeInTheDocument();
 

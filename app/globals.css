@@ -2214,3 +2214,25 @@ body {
   .nf-main { padding: 0 14px 96px; }
   .nf-feed-head { position: static; }
 }
+
+/* ================================================================= *
+ *  STITCH RECONCILIATION (2026-06-29) — folded in from the Google    *
+ *  Stitch generation that independently validated this design.       *
+ *  Two premium touches Stitch surfaced: an AI sparkle on the          *
+ *  Content Generator header + colored lead glyphs on the stat tiles.  *
+ *  Everything else Stitch reproduced is already shipped above; the    *
+ *  inverted-white Approve + labeled sidebar are kept deliberately.    *
+ * ================================================================= */
+.nf-spark {
+  display: inline-flex; align-items: center;
+  filter: drop-shadow(0 0 6px var(--accent-ring));
+}
+.nf-spark svg { width: 16px; height: 16px; display: block; }
+
+.nf-stat { display: flex; flex-direction: column; gap: 2px; }
+.nf-stat-ico { display: inline-flex; align-items: center; margin-bottom: 5px; opacity: 0.95; }
+.nf-stat-ico svg { width: 17px; height: 17px; }
+.nf-stat.tone-ok .nf-stat-ico { color: var(--color-success); }
+.nf-stat.tone-warn .nf-stat-ico { color: var(--color-warning); }
+.nf-stat.tone-accent .nf-stat-ico { color: var(--accent); }
+.nf-stat.tone-muted .nf-stat-ico { color: var(--text-muted); }

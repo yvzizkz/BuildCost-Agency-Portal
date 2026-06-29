@@ -12,6 +12,47 @@ import QueueCard from '@/components/QueueCard';
 import Sidebar from '@/components/Sidebar';
 import { friendlyError } from '@/lib/utils';
 
+// Stitch-reconciliation glyphs (inline, currentColor — no icon dependency).
+const Spark = (
+  <span className="nf-spark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none">
+      <defs>
+        <linearGradient id="nfSpark" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="hsl(255 90% 66%)" />
+          <stop offset="1" stopColor="hsl(300 88% 62%)" />
+        </linearGradient>
+      </defs>
+      <path
+        fill="url(#nfSpark)"
+        d="M12 2l1.85 5.15L19 9l-5.15 1.85L12 16l-1.85-5.15L5 9l5.15-1.85L12 2zM18.5 14l.95 2.55L22 17.5l-2.55.95L18.5 21l-.95-2.55L15 17.5l2.55-.95L18.5 14z"
+      />
+    </svg>
+  </span>
+);
+
+const StatIco = {
+  clock: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+    </svg>
+  ),
+  check: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" /><path d="m8.5 12 2.5 2.5 4.5-5" />
+    </svg>
+  ),
+  bookmark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z" />
+    </svg>
+  ),
+  layers: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" />
+    </svg>
+  ),
+};
+
 export default function HomePage() {
   const { user, profile, signOut } = useAuth();
   const [brands, setBrands] = useState<BrandDoc[]>([]);
@@ -243,6 +284,7 @@ export default function HomePage() {
         {selectedBrandId ? (
           <div className="generation-panel">
             <div className="generation-panel-header">
+              {Spark}
               <span className="generation-panel-title">Generate content</span>
               {generating && <div className="mini-spinner"></div>}
             </div>
@@ -263,10 +305,10 @@ export default function HomePage() {
 
         <div className="nf-rail-title">This brand</div>
         <div className="nf-stat-grid">
-          <div className="nf-stat"><b>{reviewItems.length}</b><span>Needs review</span></div>
-          <div className="nf-stat"><b>{approvedItems.length}</b><span>Approved</span></div>
-          <div className="nf-stat"><b>{savedItems.length}</b><span>Saved</span></div>
-          <div className="nf-stat"><b>{queueItems.length}</b><span>Total in queue</span></div>
+          <div className="nf-stat tone-warn"><span className="nf-stat-ico">{StatIco.clock}</span><b>{reviewItems.length}</b><span>Needs review</span></div>
+          <div className="nf-stat tone-ok"><span className="nf-stat-ico">{StatIco.check}</span><b>{approvedItems.length}</b><span>Approved</span></div>
+          <div className="nf-stat tone-accent"><span className="nf-stat-ico">{StatIco.bookmark}</span><b>{savedItems.length}</b><span>Saved</span></div>
+          <div className="nf-stat tone-muted"><span className="nf-stat-ico">{StatIco.layers}</span><b>{queueItems.length}</b><span>Total in queue</span></div>
         </div>
       </aside>
     </div>
