@@ -141,6 +141,53 @@ export async function editCaption(
   return commandDocRef.id;
 }
 
+// Owner-edited post date. The scheduleDate is the field social-scheduler/approval-flow own;
+// the portal can't write the queue directly, so this is a 'requested' command the bridge applies
+// to the queue item + re-dates the GHL draft. scheduleDate is an ISO-8601 UTC instant; the picker
+// produces local time and the UI converts to UTC before calling this. Mirrors dispatch.mjs ISO_UTC_RE.
+const ISO_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
+
+/** Validate + normalize an ISO-8601 UTC instant to the canonical `…:00.000Z` form, or '' if invalid. */
+function cleanScheduleDate(s: string): string {
+  const str = String(s ?? '').trim();
+  if (!ISO_UTC_RE.test(str)) return '';
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setUTCSeconds(0, 0);
+  return d.toISOString();
+}
+
+export async function editSchedule(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  queueId: string,
+  scheduleDate: string
+): Promise<string> {
+  if (!QUEUE_ID_RE.test(queueId)) {
+    throw new Error('Invalid queueId.');
+  }
+  const iso = cleanScheduleDate(scheduleDate);
+  if (!iso) {
+    throw new Error('Please choose a valid date and time.');
+  }
+
+  const commandsCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'commands');
+  const commandDocRef = doc(commandsCol);
+
+  const commandData = {
+    type: 'editSchedule',
+    status: 'requested',
+    requestedByUid: uid,
+    queueId,
+    scheduleDate: iso,
+    createdAtMs: Date.now(),
+  };
+
+  await setDoc(commandDocRef, commandData);
+  return commandDocRef.id;
+}
+
 // Dropbox-ingest: the owner pastes a Dropbox SHARE link and the bridge fetches it
 // server-side into their own Google Drive (40 TB) under "BuildCost Agency/<brand>/incoming".
 // Mirrors bridge/dispatch.mjs isDropboxHost — keep in sync. Pasted links are archived

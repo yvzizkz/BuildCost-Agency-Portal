@@ -55,8 +55,8 @@ service cloud.firestore {
           allow create: if inAgency(agencyId) && hasBrand(brandId)
             && request.resource.data.status == 'requested'
             && request.resource.data.requestedByUid == request.auth.uid
-            && request.resource.data.type in ['approve','reject','submitContent','requestGeneration','editCaption','ingestLink']
-            && (!(request.resource.data.type in ['approve','reject','editCaption']) || canApprove())
+            && request.resource.data.type in ['approve','reject','submitContent','requestGeneration','editCaption','editSchedule','ingestLink']
+            && (!(request.resource.data.type in ['approve','reject','editCaption','editSchedule']) || canApprove())
             && (request.resource.data.type != 'ingestLink'
                 || (request.resource.data.url is string && request.resource.data.source == 'dropbox'));
           allow update, delete: if false;

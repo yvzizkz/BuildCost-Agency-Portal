@@ -209,6 +209,7 @@ export type CommandType =
   | 'submitContent'
   | 'requestGeneration'
   | 'editCaption'
+  | 'editSchedule'
   | 'ingestLink';
 
 export interface CommandDoc {
@@ -218,6 +219,7 @@ export interface CommandDoc {
   requestedByUid: string;
   queueId?: string;
   notes?: string;
+  scheduleDate?: string; // ISO-8601 UTC, for editSchedule
   copy?: {
     body?: string;
     hashtags?: string;

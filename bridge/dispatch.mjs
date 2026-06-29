@@ -39,7 +39,9 @@ const SLUG_RE = /^[a-z][a-z0-9-]{1,30}$/;
 const NOTES_MAX = 500;
 
 const GENERATORS = new Set(["social", "reel"]);
-const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration", "editCaption", "generateSlot"]);
+const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration", "editCaption", "editSchedule", "generateSlot"]);
+// scheduleDate is an ISO-8601 UTC instant (the engine + social-scheduler format, e.g. 2026-06-30T17:00:00.000Z).
+const ISO_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
 const MAX_SLOT_N = 200;   // a 30-day plan has ≤ ~30 slots; this is a generous sanity bound.
 
 // Caption editing limits. Body keeps line breaks; hashtags/CTA are single-line.
@@ -150,6 +152,21 @@ export function cleanEditCopy(copy) {
   return { body, hashtags, cta };
 }
 
+/**
+ * Validate + normalize an owner-supplied scheduleDate. Accepts an ISO-8601 UTC string,
+ * zeroes seconds/ms (cadence slots are on the minute), and returns the canonical
+ * `…:00.000Z` form, or null if invalid. Boundary validator for editSchedule (a single
+ * scalar — passed as a discrete argv item, never interpolated into a shell).
+ */
+export function cleanScheduleDate(s) {
+  const str = String(s == null ? "" : s).trim();
+  if (!ISO_UTC_RE.test(str)) return null;
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCSeconds(0, 0);
+  return d.toISOString();   // e.g. 2026-06-30T17:00:00.000Z
+}
+
 function clampInt(v, lo, hi, dflt) {
   const n = Number.parseInt(v, 10);
   if (!Number.isFinite(n)) return dflt;
@@ -239,6 +256,24 @@ export function buildDispatch(tenant, type, payload = {}) {
         ...base,
         label: `editCaption:${slug}:${qid}`,
         argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "edit-caption", "--id", qid, "--copy-file", copyFile],
+        parse: parseOk,
+      },
+    };
+  }
+
+  if (type === "editSchedule") {
+    // Owner changed the recommended post date in the portal. A single validated scalar
+    // (ISO-8601 UTC) → engine writes it onto the queue item + re-dates the GHL draft.
+    const qid = String(payload.queueId || "");
+    if (!QUEUE_ID_RE.test(qid)) return fail("editSchedule requires a valid queueId");
+    const sd = cleanScheduleDate(payload.scheduleDate);
+    if (!sd) return fail("editSchedule requires a valid ISO-8601 UTC scheduleDate");
+    return {
+      ok: true,
+      exec: {
+        ...base,
+        label: `editSchedule:${slug}:${qid}`,
+        argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "set-schedule", "--id", qid, "--schedule-date", sd],
         parse: parseOk,
       },
     };
