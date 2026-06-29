@@ -2236,3 +2236,87 @@ body {
 .nf-stat.tone-warn .nf-stat-ico { color: var(--color-warning); }
 .nf-stat.tone-accent .nf-stat-ico { color: var(--accent); }
 .nf-stat.tone-muted .nf-stat-ico { color: var(--text-muted); }
+
+/* ================================================================= *
+ *  DASHBOARD (Phase C) — owner metrics + SEO view (/dashboard).      *
+ *  Reuses the app-shell + .nf-stat KPI tiles; everything below is    *
+ *  dashboard-local and token-driven so it matches the dark system.   *
+ * ================================================================= */
+.dash { display: flex; flex-direction: column; gap: 18px; padding: 0 28px 40px; }
+.dash .nf-stat-grid { margin: 4px 0 2px; }
+
+.dash-card {
+  background: var(--surface); border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm), var(--hairline);
+  padding: 18px 20px;
+}
+.dash-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dash-card-head h2 { font-size: 0.95rem; font-weight: 650; color: var(--text-primary); margin: 0; letter-spacing: -0.01em; }
+.dash-asof { margin-left: auto; font-size: 0.72rem; color: var(--text-muted); }
+
+/* status pills + chips ----------------------------------------------------- */
+.dash-pill {
+  font-size: 0.68rem; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid var(--border-color); white-space: nowrap; line-height: 1.5;
+}
+.dash-pill.tone-ok { color: var(--color-success); background: var(--color-success-bg); border-color: transparent; }
+.dash-pill.tone-info { color: var(--color-info); background: var(--color-info-bg); border-color: transparent; }
+.dash-pill.tone-warn { color: var(--color-warning); background: var(--color-warning-bg); border-color: transparent; }
+.dash-pill.tone-muted { color: var(--text-muted); background: var(--surface-2); border-color: transparent; }
+
+.dash-chip {
+  display: inline-flex; align-items: center; font-size: 0.72rem; font-weight: 600;
+  padding: 2px 9px; border-radius: 7px; background: var(--surface-2); color: var(--text-secondary);
+}
+.dash-chip.tone-ok { color: var(--color-success); background: var(--color-success-bg); }
+.dash-chip.tone-warn { color: var(--color-warning); background: var(--color-warning-bg); }
+.dash-chip.tone-accent { color: var(--accent); background: var(--accent-soft); }
+.dash-chip.tone-muted { color: var(--text-muted); background: var(--surface-2); }
+.dash-chip-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+
+/* funnel bars -------------------------------------------------------------- */
+.dash-funnel { display: flex; flex-direction: column; gap: 10px; }
+.dash-funnel-row { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 12px; }
+.dash-funnel-label { font-size: 0.8rem; color: var(--text-secondary); }
+.dash-bar-track { height: 22px; background: var(--surface-2); border-radius: 7px; overflow: hidden; }
+.dash-bar { height: 100%; background: var(--accent-grad); border-radius: 7px; transition: width var(--transition-smooth, 0.3s ease); }
+.dash-funnel-val { font-size: 0.85rem; font-weight: 650; color: var(--text-primary); text-align: right; }
+.dash-meta-row { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; font-size: 0.78rem; color: var(--text-secondary); }
+.dash-meta-row b { color: var(--text-primary); }
+
+/* inline stats (sub-KPIs inside a card) ------------------------------------ */
+.dash-inline-stats { display: flex; flex-wrap: wrap; gap: 22px; }
+.dash-inline-stats > div { display: flex; flex-direction: column; gap: 1px; }
+.dash-inline-stats b { font-size: 1.25rem; font-weight: 680; color: var(--text-primary); line-height: 1.1; }
+.dash-inline-stats span { font-size: 0.72rem; color: var(--text-muted); }
+
+/* tables ------------------------------------------------------------------- */
+.dash-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 0.8rem; }
+.dash-table th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0 8px 8px; }
+.dash-table td { padding: 8px; border-top: 1px solid var(--border-color); color: var(--text-secondary); vertical-align: middle; }
+.dash-table .r { text-align: right; }
+.dash-table td.r { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.dash-trunc { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.dash-foot { margin-top: 10px; font-size: 0.72rem; color: var(--text-muted); }
+.dash-note { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; margin: 0; }
+
+/* two-column key/value (engagement) ---------------------------------------- */
+.dash-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.dash-sub { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 0 0 8px; }
+.dash-kv { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border-color); font-size: 0.8rem; color: var(--text-secondary); }
+.dash-kv:last-child { border-bottom: none; }
+.dash-kv b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+/* right rail blocks -------------------------------------------------------- */
+.dash-freshness { display: flex; flex-direction: column; margin-bottom: 8px; }
+.dash-coming { display: flex; flex-direction: column; gap: 12px; }
+.dash-coming-item { background: var(--surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 11px 13px; }
+.dash-coming-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dash-coming-name { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); text-transform: capitalize; }
+.dash-coming-note { font-size: 0.72rem; color: var(--text-muted); line-height: 1.45; margin: 7px 0 0; }
+
+@media (max-width: 920px) {
+  .dash { padding: 0 16px 32px; }
+  .dash-two-col { grid-template-columns: 1fr; }
+  .dash-trunc { max-width: 200px; }
+}

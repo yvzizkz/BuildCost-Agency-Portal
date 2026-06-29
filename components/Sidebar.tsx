@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { BrandDoc } from '@/lib/types';
 import BrandPicker from './BrandPicker';
 
@@ -12,9 +13,11 @@ interface SidebarProps {
   onSelectBrand: (id: string) => void;
   email?: string | null;
   onSignOut: () => void;
-  active: FeedTab;
-  onTab: (tab: FeedTab) => void;
-  counts: { review: number; saved: number; approved: number };
+  // Feed-tab props are home-page only. When omitted (e.g. on /dashboard), the Feed
+  // group collapses to a single "Review Queue" link back to home.
+  active?: FeedTab;
+  onTab?: (tab: FeedTab) => void;
+  counts?: { review: number; saved: number; approved: number };
 }
 
 // Inline stroke icons (currentColor) — no icon dependency.
@@ -39,12 +42,20 @@ const Icon = {
       <path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" />
     </svg>
   ),
+  dashboard: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3h8v8H3zM13 3h8v5h-8zM13 11h8v10h-8zM3 14h8v7H3z" />
+    </svg>
+  ),
 };
 
 export default function Sidebar({
   brands, selectedBrandId, onSelectBrand, email, onSignOut, active, onTab, counts,
 }: SidebarProps) {
   const initial = (email || 'U').trim().charAt(0).toUpperCase();
+  const pathname = usePathname();
+  const onDashboard = pathname === '/dashboard';
+  const c = counts || { review: 0, saved: 0, approved: 0 };
   return (
     <aside className="nf-sidebar">
       <div className="nf-brand">
@@ -57,23 +68,38 @@ export default function Sidebar({
 
       <div className="nf-nav-label">Feed</div>
       <nav className="nf-nav">
-        <button type="button" className={`nf-link ${active === 'review' ? 'active' : ''}`} onClick={() => onTab('review')}>
-          {Icon.feed}<span>Needs Review</span>
-          {counts.review > 0 && <span className="nf-pill">{counts.review}</span>}
-        </button>
-        <button type="button" className={`nf-link ${active === 'saved' ? 'active' : ''}`} onClick={() => onTab('saved')}>
-          {Icon.saved}<span>Saved</span>
-          {counts.saved > 0 && <span className="nf-pill">{counts.saved}</span>}
-        </button>
-        <button type="button" className={`nf-link ${active === 'approved' ? 'active' : ''}`} onClick={() => onTab('approved')}>
-          {Icon.approved}<span>Approved</span>
-          {counts.approved > 0 && <span className="nf-pill">{counts.approved}</span>}
-        </button>
+        {onTab ? (
+          <>
+            <button type="button" className={`nf-link ${active === 'review' ? 'active' : ''}`} onClick={() => onTab('review')}>
+              {Icon.feed}<span>Needs Review</span>
+              {c.review > 0 && <span className="nf-pill">{c.review}</span>}
+            </button>
+            <button type="button" className={`nf-link ${active === 'saved' ? 'active' : ''}`} onClick={() => onTab('saved')}>
+              {Icon.saved}<span>Saved</span>
+              {c.saved > 0 && <span className="nf-pill">{c.saved}</span>}
+            </button>
+            <button type="button" className={`nf-link ${active === 'approved' ? 'active' : ''}`} onClick={() => onTab('approved')}>
+              {Icon.approved}<span>Approved</span>
+              {c.approved > 0 && <span className="nf-pill">{c.approved}</span>}
+            </button>
+          </>
+        ) : (
+          <Link href="/" className="nf-link">
+            {Icon.feed}<span>Review Queue</span>
+          </Link>
+        )}
+      </nav>
+
+      <div className="nf-nav-label">Insights</div>
+      <nav className="nf-nav">
+        <Link href="/dashboard" className={`nf-link ${onDashboard ? 'active' : ''}`}>
+          {Icon.dashboard}<span>Dashboard</span>
+        </Link>
       </nav>
 
       <div className="nf-nav-label">Create</div>
       <nav className="nf-nav">
-        <Link href="/intake" className="nf-link">
+        <Link href="/intake" className={`nf-link ${pathname === '/intake' ? 'active' : ''}`}>
           {Icon.intake}<span>Media Intake</span>
         </Link>
       </nav>

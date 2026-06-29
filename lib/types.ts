@@ -33,6 +33,7 @@ export interface QueueItem {
   publishCommand?: string;
   projectId?: string;
   source?: string;
+  targetChannels?: string[]; // platforms the post targets (e.g. instagram, facebook)
   ghlStatus?: string; // 'draft' once approve has pushed it to the GHL Social Planner
   ghlPostId?: string;
 }
@@ -200,6 +201,88 @@ export interface Strategy {
   enrichment: string;
   humanGate: string;
   slots: StrategySlot[];
+  mirroredAt?: Timestamp | string | number;
+}
+
+// --- Owner dashboard metrics (engine dashboard-metrics skill -> bridge -> read-only) -----
+// agencies/{a}/brands/{b}/metrics/summary — one schema-versioned snapshot per brand.
+// Each block carries an honest status the UI renders verbatim (never implies absent data).
+export type MetricBlockStatus = 'live' | 'empty' | 'pending-producer' | 'disabled';
+
+export interface FunnelStage { key: string; label: string; value: number | null }
+export interface FunnelBlock {
+  status: MetricBlockStatus;
+  source?: string;
+  asOf?: string;
+  windowDays?: number;
+  contacts?: number | null;
+  opportunities?: number | null;
+  won?: number | null;
+  wonValueUsd?: number | null;
+  byStatus?: Record<string, number>;
+  stages?: FunnelStage[];
+  conversionPct?: { contactsToOpps: number | null; oppsToWon: number | null };
+  note?: string;
+}
+export interface SeoQuery { query: string; position: number | null; impressions: number | null; clicks: number | null }
+export interface SeoBlock {
+  status: MetricBlockStatus;
+  source?: string;
+  asOf?: string;
+  windowDays?: number;
+  property?: string;
+  clicks?: number | null;
+  impressions?: number | null;
+  ctrPct?: number | null;
+  avgPosition?: number | null;
+  queryCount?: number | null;
+  pageCount?: number | null;
+  topQueries?: SeoQuery[];
+  note?: string;
+}
+export interface EngagementBlock {
+  status: MetricBlockStatus;
+  source?: string;
+  asOf?: string;
+  postsCounted?: number | null;
+  postsWithIds?: number | null;
+  hasData?: boolean;
+  note?: string | null;
+  topRecipes?: { key: string; score: number }[];
+  topProjects?: { key: string; score: number }[];
+}
+export interface SpendItem { kind?: string; mode?: string; model?: string; estUsd?: number | null; at?: string }
+export interface SpendBlock {
+  status: MetricBlockStatus;
+  source?: string;
+  month?: string;
+  spentUsd?: number | null;
+  itemCount?: number | null;
+  byKind?: Record<string, number>;
+  recent?: SpendItem[];
+  note?: string;
+}
+// reviews / gbp / paid currently have no producer — a status + explanatory note only.
+export interface StubBlock { status: MetricBlockStatus; source?: string | null; note?: string }
+
+export interface MetricsBlocks {
+  funnel: FunnelBlock;
+  seo: SeoBlock;
+  engagement: EngagementBlock;
+  spend: SpendBlock;
+  reviews: StubBlock;
+  gbp: StubBlock;
+  paid: StubBlock;
+}
+
+// agencies/{a}/brands/{b}/metrics/summary
+export interface MetricsSummary {
+  id?: string;
+  schemaVersion: number;
+  brand: string;
+  displayName?: string;
+  generatedAt: string;
+  blocks: MetricsBlocks;
   mirroredAt?: Timestamp | string | number;
 }
 

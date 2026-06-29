@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveBrand, isDraftLink, resolveDraftPath, projectItem, contentHash, planMirror } from "../bridge/mirror.mjs";
+import { resolveBrand, isDraftLink, resolveDraftPath, projectItem, contentHash, planMirror, projectMetrics, docHash } from "../bridge/mirror.mjs";
 
 const TENANTS = {
   _comment: "ignore me",
@@ -149,4 +149,53 @@ test("planMirror: a changed item re-upserts; a vanished item is archived", () =>
   assert.equal(upserts.length, 1);
   assert.equal(upserts[0].queueId, "saddlewood-2026-W26-post-1");
   assert.deepEqual(archives, ["gone-1"]);
+});
+
+// ---- projectMetrics ---------------------------------------------------------
+const metricsSummary = {
+  schemaVersion: 1, brand: "saddlewood", displayName: "Saddlewood Contracting",
+  generatedAt: "2026-06-29T18:43:55Z",
+  blocks: {
+    funnel: { status: "live", contacts: 655, opportunities: 13, won: 0 },
+    seo: { status: "live", impressions: 13, avgPosition: 2.4,
+      topQueries: [{ query: "waterproofing basement", position: 1, impressions: 12, clicks: 0 }] },
+    engagement: { status: "empty", hasData: false, note: "no engagement yet" },
+    spend: { status: "live", month: "2026-06", spentUsd: 8.27 },
+    reviews: { status: "pending-producer", source: null },
+    gbp: { status: "pending-producer", source: null },
+    paid: { status: "disabled", source: null },
+  },
+};
+
+test("projectMetrics: well-known 'summary' docId, brand-scoped hash key, no path leak", () => {
+  const p = projectMetrics(metricsSummary, SCOPE);
+  assert.equal(p.docId, "summary");                              // clean Firestore doc id
+  assert.equal(p.key, "marco-agency/saddlewood/summary");        // globally-unique hash key
+  assert.equal(p.scope.agencyId, "marco-agency");
+  assert.equal(p.scope.brandId, "saddlewood");
+  assert.equal(p.doc.agencyId, "marco-agency");
+  assert.equal(p.doc.brandId, "saddlewood");
+  assert.equal(p.doc.schemaVersion, 1);
+  assert.equal(p.doc.blocks.funnel.contacts, 655);
+  assert.equal(p.doc.blocks.seo.topQueries[0].position, 1);
+  assert.equal(p.doc.blocks.engagement.status, "empty");
+  assert.equal(p.doc.blocks.paid.status, "disabled");
+});
+
+test("projectMetrics: two brands get distinct hash keys but share the 'summary' doc id", () => {
+  const a = projectMetrics(metricsSummary, { agencyId: "marco-agency", brandId: "saddlewood" });
+  const b = projectMetrics({ ...metricsSummary, brand: "isramar" }, { agencyId: "marco-agency", brandId: "isramar" });
+  assert.notEqual(a.key, b.key);                                 // no collision in the global metricsHashes map
+  assert.equal(a.docId, b.docId);                                // each writes its own brand's metrics/summary
+});
+
+test("projectMetrics: docHash is stable and reflects a value change; null on unusable input", () => {
+  const a = projectMetrics(metricsSummary, SCOPE);
+  const b = projectMetrics(metricsSummary, SCOPE);
+  assert.equal(docHash(a.doc), docHash(b.doc));
+  const changed = projectMetrics(
+    { ...metricsSummary, blocks: { ...metricsSummary.blocks, funnel: { status: "live", contacts: 700 } } }, SCOPE);
+  assert.notEqual(docHash(a.doc), docHash(changed.doc));
+  assert.equal(projectMetrics(null, SCOPE), null);
+  assert.equal(projectMetrics({ brand: "x" }, SCOPE), null);     // no blocks -> unusable
 });
