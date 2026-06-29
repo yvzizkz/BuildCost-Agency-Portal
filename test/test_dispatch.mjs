@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDispatch, buildSubmissionPipeline, cleanEditCopy, cleanIngestLink, isDropboxHost } from "../bridge/dispatch.mjs";
+import { buildDispatch, buildSubmissionPipeline, cleanEditCopy, cleanIngestLink, isDropboxHost, cleanScheduleDate } from "../bridge/dispatch.mjs";
 
 const TENANT = { repoRoot: "/repo", env: "/repo/.env", slug: "saddlewood" };
 const REPO = "/repo";
@@ -86,6 +86,44 @@ test("editCaption without a copyFile path is rejected (internal contract)", () =
   const r = buildDispatch(TENANT, "editCaption", { queueId: "saddlewood-x" });
   assert.equal(r.ok, false);
   assert.match(r.error, /copyFile/i);
+});
+
+// ---- editSchedule -----------------------------------------------------------
+test("editSchedule builds argv with --mode set-schedule + the ISO date", () => {
+  const r = buildDispatch(TENANT, "editSchedule",
+    { queueId: "saddlewood-2026-W26-post-1", scheduleDate: "2026-06-30T17:00:00.000Z" });
+  assert.ok(r.ok);
+  assert.deepEqual(r.exec.argv,
+    [APPROVAL, "--brand", "saddlewood", "--mode", "set-schedule", "--id", "saddlewood-2026-W26-post-1",
+     "--schedule-date", "2026-06-30T17:00:00.000Z"]);
+});
+
+test("editSchedule zeroes seconds/ms to the canonical minute", () => {
+  const r = buildDispatch(TENANT, "editSchedule",
+    { queueId: "saddlewood-2026-W26-post-1", scheduleDate: "2026-06-30T17:05:45.123Z" });
+  assert.ok(r.ok);
+  assert.equal(r.exec.argv.at(-1), "2026-06-30T17:05:00.000Z");
+});
+
+test("editSchedule with an invalid queueId is rejected", () => {
+  const r = buildDispatch(TENANT, "editSchedule", { queueId: "../../x", scheduleDate: "2026-06-30T17:00:00.000Z" });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /queueId/);
+});
+
+test("editSchedule with a non-ISO date is rejected (no raw string reaches a flag)", () => {
+  for (const bad of ["notadate", "2026-06-30", "2026-06-30 17:00", "06/30/2026", ""]) {
+    const r = buildDispatch(TENANT, "editSchedule", { queueId: "saddlewood-2026-W26-post-1", scheduleDate: bad });
+    assert.equal(r.ok, false, `expected reject for ${JSON.stringify(bad)}`);
+    assert.match(r.error, /scheduleDate/);
+  }
+});
+
+test("cleanScheduleDate normalizes valid ISO and rejects junk", () => {
+  assert.equal(cleanScheduleDate("2026-06-30T17:00:00.000Z"), "2026-06-30T17:00:00.000Z");
+  assert.equal(cleanScheduleDate("2026-06-30T17:05:30Z"), "2026-06-30T17:05:00.000Z");
+  assert.equal(cleanScheduleDate("notadate"), null);
+  assert.equal(cleanScheduleDate(""), null);
 });
 
 test("cleanEditCopy normalizes body (keeps blank lines), hashtags->array, cta", () => {

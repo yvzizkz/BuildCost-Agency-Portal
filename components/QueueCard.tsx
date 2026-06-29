@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QueueItem, Draft, TriageReport, Strategy } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
-import { approve, reject, requestGeneration, editCaption, generateSlot } from '@/lib/commands';
+import { approve, reject, requestGeneration, editCaption, editSchedule, generateSlot } from '@/lib/commands';
 import SocialPreview from './SocialPreview';
 import TriageResults from './TriageResults';
 import StrategyView from './StrategyView';
@@ -80,6 +80,9 @@ export default function QueueCard({
   const [editHashtags, setEditHashtags] = useState('');
   const [editCta, setEditCta] = useState('');
   const [editMsg, setEditMsg] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [scheduleInput, setScheduleInput] = useState('');
+  const [scheduleMsg, setScheduleMsg] = useState<string | null>(null);
   const [showTriage, setShowTriage] = useState(false);
   const [showStrategy, setShowStrategy] = useState(false);
 
@@ -208,6 +211,46 @@ export default function QueueCard({
     }
   };
 
+  // <input type="datetime-local"> works in LOCAL time; convert to/from the stored UTC ISO.
+  const toLocalInputValue = (iso?: string): string => {
+    const d = iso ? new Date(iso) : new Date();
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const startEditSchedule = () => {
+    setScheduleInput(toLocalInputValue(item.scheduleDate));
+    setScheduleMsg(null);
+    setError(null);
+    setEditingSchedule(true);
+  };
+
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    const d = new Date(scheduleInput); // parsed as LOCAL time
+    if (!scheduleInput || Number.isNaN(d.getTime())) {
+      setError('Please choose a valid date and time.');
+      return;
+    }
+    d.setSeconds(0, 0);
+    const iso = d.toISOString(); // -> canonical UTC the engine stores
+    setSubmitting(true);
+    setError(null);
+    setScheduleMsg(null);
+    try {
+      await editSchedule(agencyId, brandId, uid, item.queueId, iso);
+      setEditingSchedule(false);
+      setScheduleMsg('Date updated — applying to your scheduled post…');
+    } catch (err: unknown) {
+      console.error(err);
+      setError(friendlyError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const hasCaption =
     !!draft?.copy &&
     (typeof draft.copy.body === 'string' ||
@@ -249,10 +292,37 @@ export default function QueueCard({
       <div className="queue-card-body">
         <h3 className="queue-card-title">{item.summary || item.action}</h3>
         {item.business && <p className="queue-card-business"><strong>Business:</strong> {item.business}</p>}
-        {item.scheduleDate && (
-          <p className="queue-card-schedule">
-            <strong>Scheduled:</strong> {new Date(item.scheduleDate).toLocaleDateString()}
-          </p>
+        {['social-post', 'reel', 'gbp-post'].includes(item.type) && (
+          <div className="queue-card-schedule">
+            {!editingSchedule ? (
+              <p>
+                <strong>Scheduled:</strong>{' '}
+                {item.scheduleDate
+                  ? new Date(item.scheduleDate).toLocaleString([], {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit',
+                    })
+                  : 'No date yet'}{' '}
+                <button type="button" className="link-button" onClick={startEditSchedule} disabled={submitting}>
+                  ✏️ {item.scheduleDate ? 'change' : 'set date'}
+                </button>
+              </p>
+            ) : (
+              <form onSubmit={handleSaveSchedule} className="schedule-edit">
+                <input
+                  type="datetime-local"
+                  value={scheduleInput}
+                  onChange={(ev) => setScheduleInput(ev.target.value)}
+                  disabled={submitting}
+                />
+                <button type="submit" disabled={submitting}>Save</button>
+                <button type="button" onClick={() => setEditingSchedule(false)} disabled={submitting}>
+                  Cancel
+                </button>
+              </form>
+            )}
+            {scheduleMsg && <p className="schedule-msg">{scheduleMsg}</p>}
+          </div>
         )}
       </div>
 
