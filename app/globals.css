@@ -636,6 +636,9 @@ body {
   color: #fff; font-weight: 700; font-size: 0.95rem;
   background: linear-gradient(45deg, #f09433, #e6683c 30%, #dc2743 60%, #cc2366 80%, #bc1888);
 }
+/* Logo variant: real brand logo fills the circle instead of the initials gradient. */
+.sp-avatar-img { background: #fff; padding: 0; overflow: hidden; }
+.sp-avatar-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 .sp-more svg { display: block; }
 .sp-hashtags { color: #1d4ed8; }
 

@@ -166,8 +166,25 @@ function MediaFrame({ aspect, url, asset, count, idx, setIdx, fit = 'cover', rea
   );
 }
 
+// Real brand logos for the social-preview avatar. Brand docs carry no logo field yet, so we
+// resolve by the brand/business name; falls back to the initial if there's no match or the
+// image fails to load. Assets live in /public/brand-logos.
+const BRAND_LOGOS: { test: RegExp; src: string }[] = [
+  { test: /saddlewood/i, src: '/brand-logos/saddlewood.png' },
+];
+
 function Avatar({ name }: { name: string }) {
   const initial = (name || 'B').trim().charAt(0).toUpperCase();
+  const logo = BRAND_LOGOS.find((b) => b.test.test(name || ''))?.src ?? null;
+  const [failed, setFailed] = useState(false);
+  if (logo && !failed) {
+    return (
+      <div className="sp-avatar sp-avatar-img">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logo} alt={`${name} logo`} onError={() => setFailed(true)} />
+      </div>
+    );
+  }
   return <div className="sp-avatar">{initial}</div>;
 }
 
