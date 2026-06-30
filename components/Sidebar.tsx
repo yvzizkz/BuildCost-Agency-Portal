@@ -55,6 +55,11 @@ export default function Sidebar({
   const initial = (email || 'U').trim().charAt(0).toUpperCase();
   const pathname = usePathname();
   const onDashboard = pathname === '/dashboard';
+  // The Feed-tab highlight is state-driven (activeTab), decoupled from the route. Gate it on
+  // the home route so a client-side <Link> nav to /dashboard or /intake (pathname updates
+  // optimistically) doesn't leave "Needs Review" lit alongside the new route link until the
+  // destination page mounts. Without this, two items appear active at once.
+  const onHome = pathname === '/';
   const c = counts || { review: 0, saved: 0, approved: 0 };
   return (
     <aside className="nf-sidebar">
@@ -70,15 +75,15 @@ export default function Sidebar({
       <nav className="nf-nav">
         {onTab ? (
           <>
-            <button type="button" className={`nf-link ${active === 'review' ? 'active' : ''}`} onClick={() => onTab('review')}>
+            <button type="button" className={`nf-link ${onHome && active === 'review' ? 'active' : ''}`} onClick={() => onTab('review')}>
               {Icon.feed}<span>Needs Review</span>
               {c.review > 0 && <span className="nf-pill">{c.review}</span>}
             </button>
-            <button type="button" className={`nf-link ${active === 'saved' ? 'active' : ''}`} onClick={() => onTab('saved')}>
+            <button type="button" className={`nf-link ${onHome && active === 'saved' ? 'active' : ''}`} onClick={() => onTab('saved')}>
               {Icon.saved}<span>Saved</span>
               {c.saved > 0 && <span className="nf-pill">{c.saved}</span>}
             </button>
-            <button type="button" className={`nf-link ${active === 'approved' ? 'active' : ''}`} onClick={() => onTab('approved')}>
+            <button type="button" className={`nf-link ${onHome && active === 'approved' ? 'active' : ''}`} onClick={() => onTab('approved')}>
               {Icon.approved}<span>Approved</span>
               {c.approved > 0 && <span className="nf-pill">{c.approved}</span>}
             </button>
