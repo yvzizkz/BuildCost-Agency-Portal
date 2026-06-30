@@ -564,12 +564,23 @@ async function runMirror() {
       }
     }
 
+    // A queueId that vanished from review-queue.json is a DISCARD (owner "Reject", or an
+    // engine-side cleanup), not an archive — HARD-delete it so it's plainly gone: the
+    // queueItem doc, its draft doc, and the draft's uploaded Storage media. (The UI query
+    // already hides archived:true, but owners asked for true deletion, not a hidden record.)
     for (const qid of archives) {
       const meta = prevMeta.get(qid);
       if (!meta) continue;
-      await db.doc(`agencies/${meta.agencyId}/brands/${meta.brandId}`)
-        .collection("queueItems").doc(qid)
-        .set({ archived: true, archivedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      const brandRef = db.doc(`agencies/${meta.agencyId}/brands/${meta.brandId}`);
+      await brandRef.collection("queueItems").doc(qid).delete();
+      if (meta.draftId) {
+        await brandRef.collection("drafts").doc(meta.draftId).delete();
+        try {
+          await bucket.deleteFiles({ prefix: `agencies/${meta.agencyId}/brands/${meta.brandId}/media/${meta.draftId}/` });
+        } catch (e) {
+          console.error(`[mirror] media cleanup failed for ${meta.draftId}:`, e?.message || e);
+        }
+      }
     }
 
     // Phase 2/3: mirror triage.json + strategy.json -> read-only collections (content-hash gated).
@@ -584,12 +595,16 @@ async function runMirror() {
     const nextMeta = new Map();
     for (const p of projections) {
       mirrorHashes.set(p.queueId, p.hash);
-      nextMeta.set(p.queueId, { agencyId: p.queueItem.agencyId, brandId: p.queueItem.brandId });
+      // carry draftId so a later hard-delete can drop the draft doc + its Storage media
+      nextMeta.set(p.queueId, {
+        agencyId: p.queueItem.agencyId, brandId: p.queueItem.brandId,
+        draftId: p.draftId || p.queueItem.draftId || null,
+      });
     }
     mirrorMeta = nextMeta;
 
     if (upserts.length || archives.length) {
-      console.log(`[mirror] ${upserts.length} upserted, ${archives.length} archived, ${projections.length} live`);
+      console.log(`[mirror] ${upserts.length} upserted, ${archives.length} deleted, ${projections.length} live`);
     }
   } catch (e) {
     console.error("[mirror] pass failed:", e?.message || e);

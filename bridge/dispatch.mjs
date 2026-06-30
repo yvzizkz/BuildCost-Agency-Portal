@@ -39,7 +39,7 @@ const SLUG_RE = /^[a-z][a-z0-9-]{1,30}$/;
 const NOTES_MAX = 500;
 
 const GENERATORS = new Set(["social", "reel"]);
-const ALLOWED_TYPES = new Set(["approve", "reject", "requestGeneration", "editCaption", "editSchedule", "generateSlot"]);
+const ALLOWED_TYPES = new Set(["approve", "reject", "deleteItem", "requestGeneration", "editCaption", "editSchedule", "generateSlot"]);
 // scheduleDate is an ISO-8601 UTC instant (the engine + social-scheduler format, e.g. 2026-06-30T17:00:00.000Z).
 const ISO_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
 const MAX_SLOT_N = 200;   // a 30-day plan has ≤ ~30 slots; this is a generous sanity bound.
@@ -238,6 +238,23 @@ export function buildDispatch(tenant, type, payload = {}) {
         ...base,
         label: `reject:${slug}:${qid}`,
         argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "reject", "--id", qid, "--notes", notes],
+        parse: parseOk,
+      },
+    };
+  }
+
+  if (type === "deleteItem") {
+    // Owner "Reject" = plain discard. HARD-removes the item from the queue + deletes its
+    // draft file (engine), and the mirror then drops its Firestore docs + Storage media.
+    // No notes (unlike reject, which keeps the item + seeds a V2 regen). Draft-only path.
+    const qid = String(payload.queueId || "");
+    if (!QUEUE_ID_RE.test(qid)) return fail("deleteItem requires a valid queueId");
+    return {
+      ok: true,
+      exec: {
+        ...base,
+        label: `delete:${slug}:${qid}`,
+        argv: [abs(SCRIPTS.approvalFlow), "--brand", slug, "--mode", "delete", "--id", qid, "--json"],
         parse: parseOk,
       },
     };

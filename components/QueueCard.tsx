@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { QueueItem, Draft, TriageReport, Strategy } from '@/lib/types';
 import { fetchDraft } from '@/lib/queue';
-import { approve, reject, requestGeneration, editCaption, editSchedule, generateSlot } from '@/lib/commands';
+import { approve, reject, deleteItem, requestGeneration, editCaption, editSchedule, generateSlot } from '@/lib/commands';
 import SocialPreview from './SocialPreview';
 import TriageResults from './TriageResults';
 import StrategyView from './StrategyView';
@@ -64,6 +64,7 @@ export default function QueueCard({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +133,26 @@ export default function QueueCard({
       setSuccessMsg('Rejection command submitted successfully!');
       setRejecting(false);
       setNotes('');
+    } catch (err: unknown) {
+      console.error(err);
+      setError(friendlyError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Owner "Reject" = plain discard. Hard-deletes the item (engine removes it from the queue +
+  // deletes the draft; the bridge mirror drops its Firestore docs + Storage media), so the card
+  // vanishes once the command lands. Distinct from "Request Revisions" (keep + regenerate).
+  const handleDelete = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      await deleteItem(agencyId, brandId, uid, item.queueId);
+      setSuccessMsg('Rejected — removing this draft from your queue…');
+      setConfirmingDelete(false);
     } catch (err: unknown) {
       console.error(err);
       setError(friendlyError(err));
@@ -515,7 +536,26 @@ export default function QueueCard({
 
       {isActive && !successMsg && (
         <div className="queue-card-actions">
-          {!rejecting ? (
+          {confirmingDelete ? (
+            <div className="delete-confirm">
+              <span className="delete-confirm-text">
+                Reject and delete this draft? It’s removed from your queue for good — this can’t be undone.
+              </span>
+              <div className="delete-confirm-actions">
+                <button type="button" className="btn-delete-confirm" disabled={submitting} onClick={handleDelete}>
+                  {submitting ? 'Deleting…' : 'Delete it'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-cancel"
+                  disabled={submitting}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : !rejecting ? (
             <>
               <button
                 className="btn-approve"
@@ -533,6 +573,18 @@ export default function QueueCard({
                 }}
               >
                 Request Revisions
+              </button>
+              <button
+                type="button"
+                className="btn-delete-trigger"
+                disabled={submitting}
+                onClick={() => {
+                  setConfirmingDelete(true);
+                  setError(null);
+                }}
+                title="Delete this draft from the queue permanently"
+              >
+                Reject
               </button>
             </>
           ) : (

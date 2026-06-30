@@ -105,6 +105,34 @@ export async function reject(
   return commandDocRef.id;
 }
 
+// Owner "Reject" = plain discard (NOT "Request Revisions"). Hard-deletes the item: the
+// engine removes it from the queue + deletes the draft file, and the bridge mirror then
+// drops its Firestore docs + Storage media. No notes, no regeneration — it's just gone.
+export async function deleteItem(
+  agencyId: string,
+  brandId: string,
+  uid: string,
+  queueId: string
+): Promise<string> {
+  if (!QUEUE_ID_RE.test(queueId)) {
+    throw new Error('Invalid queueId.');
+  }
+
+  const commandsCol = collection(db, 'agencies', agencyId, 'brands', brandId, 'commands');
+  const commandDocRef = doc(commandsCol);
+
+  const commandData = {
+    type: 'deleteItem',
+    status: 'requested',
+    requestedByUid: uid,
+    queueId,
+    createdAtMs: Date.now(),
+  };
+
+  await setDoc(commandDocRef, commandData);
+  return commandDocRef.id;
+}
+
 // Owner-edited caption. The portal can't write the draft directly (engine-authored,
 // read-only by rule), so this is a 'requested' command the bridge applies to the engine
 // draft + refreshes the GHL draft. Body keeps line breaks; hashtags/CTA are single-line.

@@ -65,6 +65,27 @@ test("reject notes are length-capped", () => {
   assert.equal(r.exec.argv.at(-1).length, 500);
 });
 
+// ---- deleteItem (hard reject/discard) ---------------------------------------
+test("deleteItem builds argv with --mode delete", () => {
+  const r = buildDispatch(TENANT, "deleteItem", { queueId: "saddlewood-2026-W27-reel-x" });
+  assert.ok(r.ok);
+  assert.deepEqual(r.exec.argv,
+    [APPROVAL, "--brand", "saddlewood", "--mode", "delete", "--id", "saddlewood-2026-W27-reel-x", "--json"]);
+});
+
+test("deleteItem without queueId is rejected", () => {
+  const r = buildDispatch(TENANT, "deleteItem", {});
+  assert.equal(r.ok, false);
+  assert.match(r.error, /queueId/);
+});
+
+test("deleteItem with an injection-y queueId is rejected (no raw string reaches a flag)", () => {
+  for (const bad of ["a b", "--notes", "x;rm -rf /", "../../etc"]) {
+    const r = buildDispatch(TENANT, "deleteItem", { queueId: bad });
+    assert.equal(r.ok, false, `should reject ${bad}`);
+  }
+});
+
 // ---- editCaption ------------------------------------------------------------
 test("editCaption builds argv with --mode edit-caption + --copy-file path", () => {
   const r = buildDispatch(TENANT, "editCaption",
